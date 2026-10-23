@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ProWorkers</string>
+    <string name="title_activity_main">ProWorkers</string>
+    <string name="package_name">com.proworkers.app</string>
+    <string name="custom_url_scheme">com.proworkers.app</string>
+</resources>

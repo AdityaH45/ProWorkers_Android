@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "226083159791",
+    "project_id": "proworkers--2",
+    "storage_bucket": "proworkers--2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:226083159791:android:f5e1817bb9abdc4774e51a",
+        "android_client_info": {
+          "package_name": "com.proworkers.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANCUDMxZqoqeJRgzC_b3IplmsImS8BkxE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
