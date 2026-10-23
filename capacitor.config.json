@@ -1,0 +1,10 @@
+{
+  "appId": "com.proworkers.app",
+  "appName": "ProWorkers",
+  "webDir": "dist",
+  "backgroundColor": "#0D1117",
+  "android": { "allowMixedContent": true },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 1200, "backgroundColor": "#0D1117", "showSpinner": false }
+  }
+}

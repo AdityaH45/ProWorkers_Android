@@ -1,0 +1,289 @@
+import React, { createContext, useContext, useState, useEffect } from "react";
+
+// ── Supported languages ────────────────────────────────────────────────────
+export const LANGUAGES = [
+  { code: "en", label: "English", native: "English" },
+  { code: "hi", label: "Hindi",   native: "हिंदी" },
+  { code: "gu", label: "Gujarati",native: "ગુજરાતી" },
+];
+
+// ── Translation dictionary ─────────────────────────────────────────────────
+// Keys are referenced via t("key"). Falls back to English, then to the key
+// itself, so untranslated/new strings never break the UI.
+const DICT = {
+  en: {
+    app_tagline: "Verified Local Hands · Surat",
+    choose_language: "CHOOSE LANGUAGE",
+    i_am_a: "I AM A",
+    role_customer: "Customer",
+    role_customer_sub: "Book workers for home tasks",
+    role_worker: "Worker",
+    role_worker_sub: "Accept jobs & earn money",
+    full_name: "FULL NAME *",
+    full_name_ph: "e.g. Rahul Patel",
+    phone: "PHONE *",
+    your_area: "YOUR AREA",
+    your_area_ph: "e.g. Adajan, Surat",
+    your_skill: "YOUR SKILL *",
+    email: "EMAIL *",
+    password: "PASSWORD *",
+    confirm_password: "CONFIRM PASSWORD *",
+    forgot_password: "Forgot password?",
+    please_wait: "Please wait…",
+    create_account: "Create Account →",
+    sign_in: "Sign In →",
+    already_registered: "Already registered? ",
+    new_to_app: "New to ProWorkers? ",
+    sign_in_link: "Sign In",
+    create_account_link: "Create an account",
+    nav_home: "Home",
+    nav_book: "Book",
+    nav_bookings: "Bookings",
+    nav_profile: "Profile",
+    nav_requests: "Requests",
+    nav_active: "Active",
+    nav_earnings: "Earnings",
+    back: "Back",
+    cancel: "Cancel",
+    save: "Save",
+    submit: "Submit",
+    logout: "Logout",
+    pay_now: "Pay Now",
+    rate_worker: "⭐ Rate & Remark this Worker",
+    skip_rate_later: "Skip — I'll rate later in Bookings",
+    book_now: "Book Now",
+    welcome_back: "Welcome back",
+    no_bookings_yet: "No bookings yet",
+    your_bookings: "Your Bookings",
+    my_profile: "My Profile",
+    edit_profile: "✏️ Edit Profile",
+    change_password: "🔑 Change Password",
+    sign_out: "Sign Out",
+    role: "Role",
+    area: "Area",
+    not_set: "Not set",
+    customer: "Customer",
+    worker: "Worker",
+    language: "LANGUAGE",
+    online: "Online",
+    offline: "Offline",
+    incoming_requests: "Incoming Requests",
+    no_requests_now: "No requests right now",
+    new_requests_appear: "New requests will appear here",
+    active_jobs: "Active Jobs",
+    no_active_jobs: "No active jobs",
+    accepted_requests_appear: "Accepted requests appear here",
+    my_earnings: "My Earnings",
+    total_earned: "TOTAL EARNED",
+    jobs_done: "JOBS DONE",
+    in_progress: "IN PROGRESS",
+    pending: "PENDING",
+    withdraw_to_upi: "💰 Withdraw to UPI",
+    calendar: "📅 Calendar",
+    completed_jobs: "COMPLETED JOBS",
+    tap_for_details: "Tap for details →",
+    no_completed_jobs: "No completed jobs yet.",
+    accept: "Accept",
+    decline: "Decline",
+    mark_complete: "Mark as Complete",
+  },
+  hi: {
+    app_tagline: "विश्वसनीय स्थानीय कारीगर · सूरत",
+    choose_language: "भाषा चुनें",
+    i_am_a: "मैं हूँ",
+    role_customer: "ग्राहक",
+    role_customer_sub: "घर के कामों के लिए कारीगर बुक करें",
+    role_worker: "कारीगर",
+    role_worker_sub: "काम स्वीकार करें और कमाएँ",
+    full_name: "पूरा नाम *",
+    full_name_ph: "जैसे राहुल पटेल",
+    phone: "फ़ोन *",
+    your_area: "आपका इलाका",
+    your_area_ph: "जैसे अडाजण, सूरत",
+    your_skill: "आपका कौशल *",
+    email: "ईमेल *",
+    password: "पासवर्ड *",
+    confirm_password: "पासवर्ड की पुष्टि करें *",
+    forgot_password: "पासवर्ड भूल गए?",
+    please_wait: "कृपया प्रतीक्षा करें…",
+    create_account: "खाता बनाएं →",
+    sign_in: "साइन इन करें →",
+    already_registered: "पहले से पंजीकृत हैं? ",
+    new_to_app: "ProWorkers पर नए हैं? ",
+    sign_in_link: "साइन इन करें",
+    create_account_link: "खाता बनाएं",
+    nav_home: "होम",
+    nav_book: "बुक करें",
+    nav_bookings: "बुकिंग्स",
+    nav_profile: "प्रोफ़ाइल",
+    nav_requests: "अनुरोध",
+    nav_active: "सक्रिय",
+    nav_earnings: "कमाई",
+    back: "वापस",
+    cancel: "रद्द करें",
+    save: "सहेजें",
+    submit: "जमा करें",
+    logout: "लॉगआउट",
+    pay_now: "अभी भुगतान करें",
+    rate_worker: "⭐ कारीगर को रेट करें",
+    skip_rate_later: "छोड़ें — मैं बाद में बुकिंग्स में रेट करूँगा",
+    book_now: "अभी बुक करें",
+    welcome_back: "वापसी पर स्वागत है",
+    no_bookings_yet: "अभी तक कोई बुकिंग नहीं",
+    your_bookings: "आपकी बुकिंग्स",
+    my_profile: "मेरी प्रोफ़ाइल",
+    edit_profile: "✏️ प्रोफ़ाइल संपादित करें",
+    change_password: "🔑 पासवर्ड बदलें",
+    sign_out: "साइन आउट करें",
+    role: "भूमिका",
+    area: "इलाका",
+    not_set: "सेट नहीं है",
+    customer: "ग्राहक",
+    worker: "कारीगर",
+    language: "भाषा",
+    online: "ऑनलाइन",
+    offline: "ऑफ़लाइन",
+    incoming_requests: "आने वाले अनुरोध",
+    no_requests_now: "अभी कोई अनुरोध नहीं",
+    new_requests_appear: "नए अनुरोध यहाँ दिखाई देंगे",
+    active_jobs: "सक्रिय काम",
+    no_active_jobs: "कोई सक्रिय काम नहीं",
+    accepted_requests_appear: "स्वीकृत अनुरोध यहाँ दिखाई देंगे",
+    my_earnings: "मेरी कमाई",
+    total_earned: "कुल कमाई",
+    jobs_done: "पूरे किए गए काम",
+    in_progress: "प्रगति में",
+    pending: "लंबित",
+    withdraw_to_upi: "💰 UPI में निकालें",
+    calendar: "📅 कैलेंडर",
+    completed_jobs: "पूरे किए गए काम",
+    tap_for_details: "विवरण के लिए टैप करें →",
+    no_completed_jobs: "अभी तक कोई पूरा काम नहीं।",
+    accept: "स्वीकार करें",
+    decline: "अस्वीकार करें",
+    mark_complete: "पूर्ण के रूप में चिह्नित करें",
+  },
+  gu: {
+    app_tagline: "વિશ્વસનીય સ્થાનિક કારીગરો · સુરત",
+    choose_language: "ભાષા પસંદ કરો",
+    i_am_a: "હું છું",
+    role_customer: "ગ્રાહક",
+    role_customer_sub: "ઘરના કામો માટે કારીગર બુક કરો",
+    role_worker: "કારીગર",
+    role_worker_sub: "કામ સ્વીકારો અને કમાઓ",
+    full_name: "પૂરું નામ *",
+    full_name_ph: "દા.ત. રાહુલ પટેલ",
+    phone: "ફોન *",
+    your_area: "તમારો વિસ્તાર",
+    your_area_ph: "દા.ત. અડાજણ, સુરત",
+    your_skill: "તમારી કુશળતા *",
+    email: "ઈમેલ *",
+    password: "પાસવર્ડ *",
+    confirm_password: "પાસવર્ડની પુષ્ટિ કરો *",
+    forgot_password: "પાસવર્ડ ભૂલી ગયા?",
+    please_wait: "કૃપા કરી રાહ જુઓ…",
+    create_account: "ખાતું બનાવો →",
+    sign_in: "સાઇન ઇન કરો →",
+    already_registered: "પહેલેથી નોંધાયેલ છો? ",
+    new_to_app: "ProWorkers પર નવા છો? ",
+    sign_in_link: "સાઇન ઇન કરો",
+    create_account_link: "ખાતું બનાવો",
+    nav_home: "હોમ",
+    nav_book: "બુક કરો",
+    nav_bookings: "બુકિંગ્સ",
+    nav_profile: "પ્રોફાઇલ",
+    nav_requests: "વિનંતીઓ",
+    nav_active: "સક્રિય",
+    nav_earnings: "કમાણી",
+    back: "પાછળ",
+    cancel: "રદ કરો",
+    save: "સાચવો",
+    submit: "સબમિટ કરો",
+    logout: "લૉગઆઉટ",
+    pay_now: "હવે ચૂકવો",
+    rate_worker: "⭐ કારીગરને રેટ કરો",
+    skip_rate_later: "છોડો — હું પછી બુકિંગ્સમાં રેટ કરીશ",
+    book_now: "હવે બુક કરો",
+    welcome_back: "પાછા સ્વાગત છે",
+    no_bookings_yet: "હજુ સુધી કોઈ બુકિંગ નથી",
+    your_bookings: "તમારી બુકિંગ્સ",
+    my_profile: "મારી પ્રોફાઇલ",
+    edit_profile: "✏️ પ્રોફાઇલ સંપાદિત કરો",
+    change_password: "🔑 પાસવર્ડ બદલો",
+    sign_out: "સાઇન આઉટ કરો",
+    role: "ભૂમિકા",
+    area: "વિસ્તાર",
+    not_set: "સેટ નથી",
+    customer: "ગ્રાહક",
+    worker: "કારીગર",
+    language: "ભાષા",
+    online: "ઓનલાઇન",
+    offline: "ઓફલાઇન",
+    incoming_requests: "આવતી વિનંતીઓ",
+    no_requests_now: "હાલમાં કોઈ વિનંતી નથી",
+    new_requests_appear: "નવી વિનંતીઓ અહીં દેખાશે",
+    active_jobs: "સક્રિય કામો",
+    no_active_jobs: "કોઈ સક્રિય કામ નથી",
+    accepted_requests_appear: "સ્વીકૃત વિનંતીઓ અહીં દેખાશે",
+    my_earnings: "મારી કમાણી",
+    total_earned: "કુલ કમાણી",
+    jobs_done: "પૂર્ણ થયેલા કામો",
+    in_progress: "ચાલુ છે",
+    pending: "બાકી",
+    withdraw_to_upi: "💰 UPI માં ઉપાડો",
+    calendar: "📅 કેલેન્ડર",
+    completed_jobs: "પૂર્ણ થયેલા કામો",
+    tap_for_details: "વિગતો માટે ટેપ કરો →",
+    no_completed_jobs: "હજુ સુધી કોઈ કામ પૂર્ણ થયું નથી.",
+    accept: "સ્વીકારો",
+    decline: "નકારો",
+    mark_complete: "પૂર્ણ તરીકે ચિહ્નિત કરો",
+  },
+};
+
+const STORAGE_KEY = "pt_lang";
+
+const LanguageContext = createContext({
+  lang: "en",
+  setLang: () => {},
+  t: (k) => k,
+});
+
+export function LanguageProvider({ children }) {
+  const [lang, setLangState] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || "en";
+    } catch {
+      return "en";
+    }
+  });
+
+  function setLang(code) {
+    setLangState(code);
+    try {
+      localStorage.setItem(STORAGE_KEY, code);
+    } catch {}
+  }
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved && saved !== lang) setLangState(saved);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function t(key) {
+    return (DICT[lang] && DICT[lang][key]) || DICT.en[key] || key;
+  }
+
+  return (
+    <LanguageContext.Provider value={{ lang, setLang, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+}
+
+export function useLang() {
+  return useContext(LanguageContext);
+}
