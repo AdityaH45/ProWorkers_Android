@@ -14,7 +14,7 @@
     }
   },
   "server": {
-    "hostname": "proworkers.netlify.app",
+    "hostname": "proworkers-web.pages.dev",
     "androidScheme": "https"
   }
 }
