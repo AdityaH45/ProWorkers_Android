@@ -1494,6 +1494,90 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
 }
 
 // ── Booking Flow ──────────────────────────────────────────────────────────────
+// Call + chat buttons shown to both sides once a worker is assigned
+const telHref = ph => `tel:${String(ph || "").replace(/[^\d+]/g, "")}`;
+function ContactBar({ phone, name, onChat, C }) {
+  return (
+    <div style={{ display:"flex", gap:8, marginTop:10 }}>
+      {phone ? (
+        <a href={telHref(phone)} style={{ flex:1, textAlign:"center", textDecoration:"none", background:`${C.green}22`, border:`1px solid ${C.green}66`, color:C.green, borderRadius:10, padding:"11px 0", fontWeight:800, fontSize:13 }}>📞 Call {name || ""}</a>
+      ) : null}
+      <button onClick={onChat} style={{ flex:1, background:`${C.blue}22`, border:`1px solid ${C.blue}66`, color:C.blue, borderRadius:10, padding:"11px 0", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>💬 Chat</button>
+    </div>
+  );
+}
+
+// In-app chat for one booking (customer <-> assigned worker)
+function ChatModal({ booking, meRole, otherName, otherPhone, C, onClose }) {
+  const [msgs, setMsgs] = useState([]);
+  const [open, setOpen] = useState(true);
+  const [text, setText] = useState("");
+  const [err, setErr]   = useState("");
+  const endRef = useRef(null), lastRef = useRef(null);
+  useEffect(() => {
+    let stop = false;
+    const load = async () => {
+      try {
+        const q = lastRef.current ? `?after=${encodeURIComponent(lastRef.current)}` : "";
+        const d = await apiGet(`/bookings/${booking.id}/messages${q}`);
+        if (stop) return;
+        setOpen(d.open);
+        if (d.messages.length) {
+          setMsgs(prev => { const ids = new Set(prev.map(m => m.id)); const add = d.messages.filter(m => !ids.has(m.id)); return add.length ? [...prev, ...add] : prev; });
+          lastRef.current = d.messages[d.messages.length - 1].createdAt;
+        }
+      } catch {}
+    };
+    load(); const t = setInterval(load, 4000);
+    return () => { stop = true; clearInterval(t); };
+  }, [booking.id]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs.length]);
+  async function send() {
+    const v = text.trim(); if (!v) return;
+    setErr(""); setText("");
+    try {
+      const r = await apiPost(`/bookings/${booking.id}/messages`, { text: v });
+      setMsgs(prev => prev.some(m => m.id === r.message.id) ? prev : [...prev, r.message]);
+    } catch (e) { setErr(e.message || "Could not send."); setText(v); }
+  }
+  const hhmm = d => new Date(d).toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" });
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:600, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.card, borderRadius:"22px 22px 0 0", width:"100%", maxWidth:480, height:"82vh", display:"flex", flexDirection:"column", border:`1px solid ${C.border}` }}>
+        <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", gap:10, borderBottom:`1px solid ${C.border}` }}>
+          <div style={{ flex:1 }}>
+            <div style={{ color:C.text, fontWeight:900, fontSize:16 }}>💬 {otherName || (meRole === "customer" ? "Worker" : "Customer")}</div>
+            {otherPhone && <div style={{ color:C.muted, fontSize:12, marginTop:2 }}>{otherPhone}</div>}
+          </div>
+          {otherPhone && <a href={telHref(otherPhone)} style={{ textDecoration:"none", background:`${C.green}22`, border:`1px solid ${C.green}66`, color:C.green, borderRadius:10, padding:"8px 12px", fontWeight:800, fontSize:13 }}>📞 Call</a>}
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.muted, fontSize:24, cursor:"pointer" }}>✕</button>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 14px" }}>
+          {msgs.length === 0 && <div style={{ color:C.muted, fontSize:13, textAlign:"center", marginTop:40 }}>No messages yet. Say hello 👋</div>}
+          {msgs.map(m => {
+            const mine = m.senderRole === meRole;
+            return (
+              <div key={m.id} style={{ display:"flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom:8 }}>
+                <div style={{ maxWidth:"78%", background: mine ? C.amber : C.card2, color: mine ? "#0D1117" : C.text, borderRadius:14, padding:"8px 12px", fontSize:14, lineHeight:1.4, wordBreak:"break-word" }}>
+                  {m.text}
+                  <div style={{ fontSize:10, opacity:0.6, marginTop:3, textAlign:"right" }}>{hhmm(m.createdAt)}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={endRef}/>
+        </div>
+        {!open && <div style={{ color:C.muted, fontSize:12, textAlign:"center", padding:"8px 14px", borderTop:`1px solid ${C.border}` }}>Chat is closed for this booking.</div>}
+        {err && <div style={{ color:C.red, fontSize:12, padding:"6px 14px 0" }}>⚠️ {err}</div>}
+        <div style={{ display:"flex", gap:8, padding:"10px 12px 18px", borderTop: open ? `1px solid ${C.border}` : "none" }}>
+          <input value={text} disabled={!open} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} maxLength={500} placeholder={open ? "Type a message…" : "Chat closed"} style={{ flex:1, background:C.card2, border:`1px solid ${C.border}`, color:C.text, borderRadius:12, padding:"12px 14px", fontSize:14, fontFamily:"inherit", outline:"none" }}/>
+          <button onClick={send} disabled={!open || !text.trim()} style={{ background: open && text.trim() ? C.amber : C.card2, color: open && text.trim() ? "#0D1117" : C.muted, border:"none", borderRadius:12, padding:"0 18px", fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>Send</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Worker: "I've arrived" only works within 200 m of the customer's address (the server checks it too)
 function ArriveButton({ req, C, onTap }) {
   const [chk, setChk] = useState(null);
@@ -1595,6 +1679,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
   const [worker,       setWorker]       = useState(null);
   const [booking,      setBooking]      = useState(null);
   const [showPay,      setShowPay]      = useState(false);
+  const [showChat,     setShowChat]     = useState(false);
   const [workerCounts, setWorkerCounts] = useState({ electrician:0, plumber:0, labour:0 });
   const [checking,     setChecking]     = useState(false);
   const [unavailable,  setUnavailable]  = useState(false);
@@ -2042,9 +2127,12 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
               <TrustRing trust={booking.workerTrust||70} size={52} color={svc.color}/>
             </div>
             <div style={{ background:C.card2, borderRadius:12, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <span style={{ color:C.sub, fontSize:13 }}>📞 {booking.workerPhone}</span>
+              <span style={{ color:C.sub, fontSize:13 }}>📞 {booking.workerPhone || "—"}</span>
               <span style={{ color:C.green, fontSize:12, fontWeight:700 }}>● {booking.cancelFee>0 ? "Cancelled" : booking.status==="cancelled" ? "Cancelled" : booking.arrivedAt ? "Arrived" : ({ assigned:"Accepted", on_way:"On the way", in_progress:"Working", completed:"Job done", paid:"Job done" }[booking.status] || "Accepted")}</span>
             </div>
+            {booking.workerPhone && !["cancelled"].includes(booking.status) && (
+              <ContactBar phone={booking.workerPhone} name={booking.workerName} onChat={() => setShowChat(true)} C={C}/>
+            )}
           </div>
         ) : (
           <div style={{ background:C.card, border:`2px solid ${svc.color}44`, borderRadius:20, padding:24, marginBottom:14, textAlign:"center" }}>
@@ -2117,6 +2205,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
           ← Back to Home
         </button>
 
+        {showChat && booking && <ChatModal booking={booking} meRole="customer" otherName={booking.workerName} otherPhone={booking.workerPhone} C={C} onClose={() => setShowChat(false)}/>}
         {showPay && (
           <PaymentModal
             total={booking.total - (booking.cashSurcharge||0)} cashCharge={cashChargeFor(booking)} jobTotal={booking.jobTotal} platformMarkup={booking.platformFee - (booking.cashSurcharge||0)} svc={svc}
@@ -3056,6 +3145,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   });
   const [showEdit, setShowEdit] = useState(false);
   const [selJobDetail, setSelJobDetail] = useState(null);
+  const [chatJob, setChatJob] = useState(null);
 
   const seenReqIds = useRef(null);   // ids of incoming requests the worker has already been told about
   async function loadJobs() {
@@ -3482,6 +3572,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                   <div style={{ color:C.muted, fontSize:12 }}>📍 {req.address}</div>
                   <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>📞 {req.customerPhone}</div>
                   <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>✅ {req.acceptedAt}</div>
+                  <ContactBar phone={req.customerPhone} name={req.customerName?.split(" ")[0]} onChat={() => setChatJob(req)} C={C}/>
                   <a href={navLink(req)} target="_blank" rel="noopener noreferrer" style={{ display:"block", textAlign:"center", textDecoration:"none", marginTop:10, background:C.blue+"22", border:`1px solid ${C.blue}`, color:C.blue, borderRadius:10, padding:"10px 0", fontWeight:800, fontSize:13 }}>
                     🧭 Navigate to customer{req.coords ? "" : " (address search)"}
                   </a>
@@ -3590,6 +3681,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
       {showWithdraw && <WithdrawModal ctx={ctx}/>}
       {showCalendar && <CalendarView ctx={ctx}/>}
       {showEdit && <ProfileEditModal user={user} onSave={u => { handleWorkerUpdateUser(u); setShowEdit(false); }} onClose={() => setShowEdit(false)} C={C}/>}
+      {chatJob && <ChatModal booking={chatJob} meRole="worker" otherName={chatJob.customerName} otherPhone={chatJob.customerPhone} C={C} onClose={() => setChatJob(null)}/>}
       {selJobDetail && <WorkerJobDetailModal job={selJobDetail} C={C} svcColor={svcColor} svcIcon={svcIcon} onClose={() => setSelJobDetail(null)}/>}
       {cashConfirmNeeded && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.82)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
