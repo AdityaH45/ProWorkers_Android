@@ -1479,6 +1479,32 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
 }
 
 // ── Booking Flow ──────────────────────────────────────────────────────────────
+// Worker: "I've arrived" only works within 200 m of the customer's address (the server checks it too)
+function ArriveButton({ req, C, onTap }) {
+  const [chk, setChk] = useState(null);
+  useEffect(() => {
+    let stop = false;
+    const load = () => apiGet(`/bookings/${req.id}/arrival-check`).then(d => { if (!stop) setChk(d); }).catch(() => {});
+    load(); const t = setInterval(load, 10000);
+    return () => { stop = true; clearInterval(t); };
+  }, [req.id]);
+  const ok = !!chk?.canArrive;
+  const far = chk && !chk.canArrive && chk.distanceM != null;
+  return (
+    <div style={{ marginBottom:10 }}>
+      <button onClick={() => ok && onTap()} disabled={!ok} style={{ width:"100%", padding:"14px 0", background: ok ? C.green : C.card2, color: ok ? "#0D1117" : C.muted, border: ok ? "none" : `1.5px solid ${C.border}`, borderRadius:12, fontWeight:800, fontSize:15, cursor: ok ? "pointer" : "not-allowed", fontFamily:"inherit" }}>
+        📍 I've arrived
+      </button>
+      <div style={{ color:C.muted, fontSize:11.5, textAlign:"center", marginTop:6 }}>
+        {!chk ? "Checking your distance…"
+          : ok ? (chk.distanceM != null ? `You are ${chk.distanceM} m from the customer ✓` : "Tap when you reach the address")
+          : far ? `You are ${chk.distanceM >= 1000 ? (chk.distanceM/1000).toFixed(1) + " km" : chk.distanceM + " m"} away. Come within ${chk.radiusM || 200} m to tap this.`
+          : "We can't see your location yet. Keep the app open with location sharing on."}
+      </div>
+    </div>
+  );
+}
+
 // Live tracking card for the customer: the worker's position and how far they have come since accepting
 function LiveTrack({ booking, C, svc }) {
   const [live, setLive] = useState(null);
@@ -3241,7 +3267,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
       const updated = normalizeBooking(res.booking);
       setAllJobs(prev => prev.map(j => j.id === updated.id ? updated : j));
       setToast({ msg: okMsg, color:C.green });
-    } catch { setToast({ msg:"⚠️ Could not update. Try again.", color:C.red }); }
+    } catch (e) { setToast({ msg:"⚠️ " + (e?.message || "Could not update. Try again."), color:C.red }); }
   }
 
   async function completeJob(req) {
@@ -3448,9 +3474,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                   </button>
                 )}
                 {req.rawStatus === "on_way" && !req.arrivedAt && (
-                  <button onClick={() => progressJob(req, { arrived:true }, "📍 Customer told you've arrived.")} style={{ width:"100%", padding:"14px 0", background:C.green, color:"#0D1117", border:"none", borderRadius:12, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>
-                    📍 I've arrived
-                  </button>
+                  <ArriveButton req={req} C={C} onTap={() => progressJob(req, { arrived:true }, "📍 Customer told you've arrived.")}/>
                 )}
                 {req.arrivedAt && <div style={{ color:C.green, fontSize:12, fontWeight:700, textAlign:"center", marginBottom:10 }}>✓ Arrived · customer notified</div>}
                 <button onClick={() => completeJob(req)} style={{ width:"100%", padding:"14px 0", background:C.amber, color:"#0D1117", border:"none", borderRadius:12, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>

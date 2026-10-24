@@ -3,8 +3,18 @@
   "appName": "ProWorkers",
   "webDir": "dist",
   "backgroundColor": "#0D1117",
-  "android": { "allowMixedContent": true },
+  "android": {
+    "allowMixedContent": true
+  },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 1200, "backgroundColor": "#0D1117", "showSpinner": false }
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#0D1117",
+      "showSpinner": false
+    }
+  },
+  "server": {
+    "hostname": "proworkers.netlify.app",
+    "androidScheme": "https"
   }
 }
