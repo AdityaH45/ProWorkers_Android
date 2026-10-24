@@ -1526,6 +1526,9 @@ function LiveTrack({ booking, C, svc }) {
           </div>
           {startKm > 0 && rem != null && <div style={{ height:6, background:C.card2, borderRadius:3, marginTop:6 }}><div style={{ width:`${pct}%`, height:6, background:svc.color, borderRadius:3, transition:"width .6s" }}/></div>}
           <div style={{ color:C.muted, fontSize:11, marginTop:8 }}>Blue = worker, red = your address. Updates while the worker's app is open.</div>
+          <div style={{ color:live.cancelFeeNow > 0 ? C.amber : C.muted, fontSize:12, fontWeight:700, marginTop:6 }}>
+            {live.cancelFeeNow > 0 ? `If you cancel now: ₹${live.cancelFeeNow} travel fee` : "If you cancel now: no fee (first 1 km is free)"}
+          </div>
         </>
       ) : (
         <div style={{ color:C.muted, fontSize:12, marginTop:6 }}>Waiting for the worker's location… (they may not have shared it)</div>
@@ -1723,9 +1726,10 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
   }
 
   async function cancelBooking() {
-    const fee = booking.status === "on_way" ? (booking.cancelFeeNow || 0) : 0;
+    let fee = 0;
+    if (booking.status === "on_way") { try { fee = (await apiGet(`/bookings/${booking.id}/live`)).cancelFeeNow || 0; } catch {} }
     const msg = fee > 0
-      ? `${booking.workerName || "The worker"} is already on the way. Cancelling now costs a ₹${fee} travel fee (₹2 per km they covered), paid by UPI and credited to the worker. Cancel anyway?`
+      ? `${booking.workerName || "The worker"} has already travelled towards you. Cancelling now costs a ₹${fee} travel fee (₹2 per km travelled, first 1 km free), paid by UPI and credited to the worker. Cancel anyway?`
       : "Cancel this booking?";
     if (!window.confirm(msg)) return;
     try {
@@ -1942,22 +1946,25 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
         <div style={{ textAlign:"center", padding:"14px 0 4px" }}>
           <span style={{
             display:"inline-block", padding:"5px 14px", borderRadius:20, fontSize:11.5, fontWeight:800, letterSpacing:0.5,
-            background: booking.workerName ? `${C.green}22` : `${C.amber}22`,
-            color: booking.workerName ? C.green : C.amber,
+            background: booking.status==="cancelled" ? `${C.red}22` : booking.workerName ? `${C.green}22` : `${C.amber}22`,
+            color: booking.status==="cancelled" ? C.red : booking.workerName ? C.green : C.amber,
           }}>
-            {booking.workerName ? "● ACCEPTED" : "● PENDING"}
+            {booking.status==="cancelled" ? "● CANCELLED" : booking.workerName ? "● ACCEPTED" : "● PENDING"}
           </span>
         </div>
         <div style={{ textAlign:"center", padding:"10px 0 22px" }}>
-          <div style={{ fontSize:52 }}>{booking.paid ? "💸" : (booking.paymentMethod==="cash"||booking.paymentStatus==="pending_verification") ? "⏳" : booking.workerName ? "🎉" : "🔍"}</div>
-          <h2 style={{ color:booking.paid?C.green:C.amber, margin:"10px 0 4px", fontWeight:900, fontSize:22 }}>
+          <div style={{ fontSize:52 }}>{booking.status==="cancelled" && !booking.paid ? "❌" : booking.paid ? "💸" : (booking.paymentMethod==="cash"||booking.paymentStatus==="pending_verification") ? "⏳" : booking.workerName ? "🎉" : "🔍"}</div>
+          <h2 style={{ color:booking.paid?C.green:booking.status==="cancelled"?C.red:C.amber, margin:"10px 0 4px", fontWeight:900, fontSize:22 }}>
             {booking.paid ? "Payment Done!"
+              : booking.status==="cancelled" ? "Booking Cancelled"
               : booking.paymentMethod==="cash" ? "Cash Payment Selected"
               : booking.paymentStatus==="pending_verification" ? "Payment Submitted"
               : booking.workerName ? "Worker Confirmed Your Job!" : "Waiting for Worker Confirmation"}
           </h2>
           <p style={{ color:C.muted, fontSize:13 }}>
-            {booking.paymentMethod==="cash" && !booking.paid
+            {booking.status==="cancelled"
+              ? (booking.cancelFee > 0 ? `${booking.workerName || "The worker"} had already travelled towards you. Travel fee: ₹${booking.cancelFee} (₹2 per km after the first km).` : "Your booking was cancelled. No charge.")
+              : booking.paymentMethod==="cash" && !booking.paid
               ? `Pay ₹${booking.total} in cash to ${booking.workerName||"the worker"}. It shows as paid once they confirm.`
               : booking.paymentStatus==="pending_verification" && !booking.paid
               ? "We'll mark it paid as soon as your payment is verified."
@@ -1965,7 +1972,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
               ? <span>Booking <span style={{ color:C.amber }}>#{booking.id}</span></span>
               : "This screen updates automatically the moment someone accepts."}
           </p>
-          {!booking.workerName && !booking.paid && (() => {
+          {!booking.workerName && !booking.paid && booking.status!=="cancelled" && (() => {
             // Seconds left of the "nearby workers first" window, counted from when the server told us
             const startLeft = booking.nearbySecondsLeft;
             const left = booking.searchPhase === "nearby" && startLeft != null ? Math.max(0, startLeft - Math.floor((Date.now() - (booking._fetchedAt || Date.now())) / 1000)) : 0;
@@ -1982,7 +1989,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
           })()}
         </div>
 
-        {booking.workerName ? (
+        {booking.status==="cancelled" ? null : booking.workerName ? (
           <div style={{ background:C.card, border:`2px solid ${svc.color}`, borderRadius:20, padding:20, marginBottom:14, animation:"pt-pop-in 0.35s ease" }}>
             <div style={{ color:C.green, fontSize:11, fontWeight:800, letterSpacing:1, marginBottom:14 }}>✅ THIS WORKER ACCEPTED YOUR JOB</div>
             <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
@@ -2016,7 +2023,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
 
         {["pending_acceptance","assigned","on_way"].includes(booking.status) && !booking.paid && (
           <button onClick={cancelBooking} style={{ width:"100%", padding:"13px 0", background:`${C.red}14`, color:C.red, border:`1.5px solid ${C.red}44`, borderRadius:12, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginBottom:14 }}>
-            ✕ Cancel booking{booking.status==="on_way" && booking.cancelFeeNow>0 ? ` (fee ₹${booking.cancelFeeNow})` : ""}
+            ✕ Cancel booking
           </button>
         )}
 
