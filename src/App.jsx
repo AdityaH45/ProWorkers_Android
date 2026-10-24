@@ -1342,6 +1342,15 @@ function PaymentModal({ total, jobTotal, platformMarkup, cashCharge = 0, noCash 
 }
 
 // ── Booking Detail Modal ──────────────────────────────────────────────────────
+// Label + colours for a customer's booking status chip (cancelled bookings are shown clearly, with any travel fee)
+function bookingChip(bk, C) {
+  if (bk.status === "cancelled") {
+    if (bk.cancelFee > 0) return bk.paid ? { text:"✕ Cancelled · fee paid", color:C.muted } : bk.paymentStatus==="pending_verification" ? { text:"⏳ Verifying fee", color:C.amber } : { text:`✕ Cancelled · fee ₹${bk.cancelFee} due`, color:C.red };
+    return { text:"✕ Cancelled", color:C.red };
+  }
+  return bk.paid ? { text:"✓ Paid", color:C.green } : bk.paymentStatus==="pending_verification" ? { text:"⏳ Verifying", color:C.amber } : { text:"Pending", color:C.amber };
+}
+
 function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, C }) {
   const [showRateForm, setShowRateForm] = useState(false);
   const [rated, setRated] = useState(!!booking.userRating);
@@ -1353,11 +1362,11 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
     ["📅 Date",     booking.date],
     ["⏰ Time",     booking.time || "—"],
     ["📍 Location", booking.customerLocation],
-    ["👷 Worker",   booking.workerName],
+    ["👷 Worker",   booking.workerName || (booking.status==="cancelled" ? "Not assigned" : "—")],
     ["⭐ Rating",   booking.workerRating ? `${booking.workerRating} / 5` : "—"],
     ["🛠️ Category", svc.label],
-    ["💰 Amount",   `₹${booking.total}`],
-    ["💳 Payment",  booking.paid ? (booking.paymentLabel || "Paid") : booking.paymentStatus==="pending_verification" ? "Verifying…" : "Pending"],
+    ["💰 Amount",   booking.status==="cancelled" ? (booking.cancelFee>0 ? `₹${booking.cancelFee} travel fee` : "No charge") : `₹${booking.total}`],
+    ["💳 Payment",  booking.status==="cancelled" && !(booking.cancelFee>0) ? "Nothing to pay" : booking.paid ? (booking.paymentLabel || "Paid") : booking.paymentStatus==="pending_verification" ? "Verifying…" : "Pending"],
     ["📞 Phone",    booking.workerPhone || "—"],
   ];
 
@@ -1370,13 +1379,13 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
         <div style={{ padding:"18px 20px 0", display:"flex", alignItems:"center", gap:14 }}>
           <Av initials={booking.workerAvatar} color={svc.color} size={54}/>
           <div style={{ flex:1 }}>
-            <div style={{ color:C.text, fontWeight:900, fontSize:17 }}>{booking.workerName}</div>
+            <div style={{ color:C.text, fontWeight:900, fontSize:17 }}>{booking.workerName || (booking.status==="cancelled" ? "Booking cancelled" : "Finding a worker")}</div>
             <div style={{ color:C.muted, fontSize:13, marginTop:2 }}>{svc.icon} {svc.label}</div>
             <Stars n={booking.workerRating||0} C={C}/>
           </div>
-          <span style={{ background:booking.paid?`${C.green}22`:`${C.amber}22`, color:booking.paid?C.green:C.amber, fontSize:12, fontWeight:700, padding:"6px 14px", borderRadius:20 }}>
-            {booking.paid?"✓ Paid":booking.paymentStatus==="pending_verification"?"⏳ Verifying":"Pending"}
-          </span>
+          {(() => { const ch = bookingChip(booking, C); return (
+            <span style={{ background:`${ch.color}22`, color:ch.color, fontSize:12, fontWeight:700, padding:"6px 14px", borderRadius:20, textAlign:"center" }}>{ch.text}</span>
+          ); })()}
         </div>
         <div style={{ padding:"8px 20px 0", color:C.muted, fontSize:12 }}>Booking ID: <span style={{ color:C.amber, fontWeight:700 }}>#{booking.id}</span></div>
 
@@ -1399,6 +1408,11 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
               <span style={{ color:svc.color, fontWeight:700, fontSize:13 }}>₹{item.price*(item.qty||1)}</span>
             </div>
           ))}
+          {booking.status === "cancelled" ? (
+            <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", fontWeight:900, color: booking.cancelFee>0 ? C.amber : C.muted, fontSize:15 }}>
+              <span>{booking.cancelFee>0 ? "Travel fee (cancelled)" : "Cancelled · no charge"}</span><span>{booking.cancelFee>0 ? `₹${booking.cancelFee}` : "₹0"}</span>
+            </div>
+          ) : (<>
           {booking.platformFee > 0 && (
             <>
               <div style={{ display:"flex", justifyContent:"space-between", padding:"9px 0", fontSize:13, color:C.sub, borderBottom:`1px solid ${C.border}` }}>
@@ -1412,6 +1426,7 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
           <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", fontWeight:900, color:C.amber, fontSize:15 }}>
             <span>Total Paid</span><span>₹{booking.total}</span>
           </div>
+          </>)}
         </div>
 
         {/* User's rating if already done */}
@@ -2167,18 +2182,21 @@ function HistoryScreen({ bookings, onComplaint, onRated, onRebook, C }) {
                 <div style={{ color:C.text, fontWeight:700, fontSize:15 }}>{sv.icon} {sv.label}</div>
                 <div style={{ color:C.muted, fontSize:12, marginTop:2 }}>#{bk.id} · {bk.date} · {bk.time}</div>
               </div>
-              <span style={{ background:bk.paid?`${C.green}22`:`${C.amber}22`, color:bk.paid?C.green:C.amber, fontSize:11, fontWeight:700, padding:"4px 12px", borderRadius:20 }}>
-                {bk.paid?"✓ Paid":bk.paymentStatus==="pending_verification"?"⏳ Verifying":"Pending"}
-              </span>
+              {(() => { const ch = bookingChip(bk, C); return (
+                <span style={{ background:`${ch.color}22`, color:ch.color, fontSize:11, fontWeight:700, padding:"4px 12px", borderRadius:20 }}>{ch.text}</span>
+              ); })()}
             </div>
             <div style={{ color:C.muted, fontSize:12, marginBottom:4 }}>📍 {bk.customerLocation}</div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div style={{ color:C.sub, fontSize:13 }}>
                 {bk.workerName
                   ? <>👷 <span style={{ color:C.text, fontWeight:600 }}>{bk.workerName}</span></>
+                  : bk.status==="cancelled" ? <span style={{ color:C.muted, fontWeight:600 }}>No worker was assigned</span>
                   : <span style={{ color:C.amber, fontWeight:600 }}>🔍 Finding a worker…</span>}
               </div>
-              <div style={{ color:C.amber, fontWeight:900, fontSize:15 }}>₹{bk.total}</div>
+              {bk.status==="cancelled"
+                ? <div style={{ color: bk.cancelFee>0 ? C.amber : C.muted, fontWeight:900, fontSize:14 }}>{bk.cancelFee>0 ? `Fee ₹${bk.cancelFee}` : "No charge"}</div>
+                : <div style={{ color:C.amber, fontWeight:900, fontSize:15 }}>₹{bk.total}</div>}
             </div>
             {bk.userRating && <div style={{ color:C.amber, fontSize:13, marginTop:6 }}>{"★".repeat(bk.userRating.stars)} You rated</div>}
             {!bk.userRating && bk.workerName && bk.status !== "cancelled" && <div style={{ color:C.muted, fontSize:12, marginTop:6 }}>⭐ Tap to rate this worker</div>}
