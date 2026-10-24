@@ -16,6 +16,14 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Two apps from one code base: "user" = customers and workers (no notification reader),
+    // "admin" = the admin's own phone (has the UPI notification reader). Same package, so they
+    // share the Firebase settings; install only one of them on a phone.
+    flavorDimensions "role"
+    productFlavors {
+        user  { dimension "role" }
+        admin { dimension "role" }
+    }
     buildTypes {
         release {
             minifyEnabled false

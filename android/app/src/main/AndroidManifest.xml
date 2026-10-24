@@ -27,18 +27,6 @@
         <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_accent" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="alerts" />
 
-        <!-- Admin "auto-verify UPI payments": reads "money received" notifications of UPI apps.
-             Only active after the admin turns on Notification access in Android settings. -->
-        <service
-            android:name=".UpiNotificationListener"
-            android:label="ProWorkers UPI auto-verify"
-            android:exported="true"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

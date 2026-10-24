@@ -20,10 +20,14 @@ jobs:
           VITE_API_URL: ${{ vars.API_URL || 'https://proworkers-backend-148c.onrender.com' }}
         run: npm run build
       - run: npx cap sync android
-      - name: Build debug APK
+      - name: Build debug APKs (customer/worker app + admin app)
         working-directory: android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: chmod +x gradlew && ./gradlew assembleUserDebug assembleAdminDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: ProWorkers-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: ProWorkers-app-for-customers-and-workers
+          path: android/app/build/outputs/apk/user/debug/app-user-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProWorkers-ADMIN-app-only-for-admin-phone
+          path: android/app/build/outputs/apk/admin/debug/app-admin-debug.apk
