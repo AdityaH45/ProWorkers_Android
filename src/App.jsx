@@ -621,6 +621,7 @@ function FullMapScreen({ onConfirm, onClose, C }) {
 // ── Backend API ──────────────────────────────────────────────────────────────
 // Native helper (Android only): reads "money received" notifications for auto-verify
 const UpiWatcher = registerPlugin("UpiWatcher");
+const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");   // keeps location going with the screen off (Android app only)
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api";
 
 // The login token goes with every call; the server uses it to know who is asking.
@@ -1348,6 +1349,7 @@ function bookingChip(bk, C) {
     if (bk.cancelFee > 0) return bk.paid ? { text:"✕ Cancelled · fee paid", color:C.muted } : bk.paymentStatus==="pending_verification" ? { text:"⏳ Verifying fee", color:C.amber } : { text:`✕ Cancelled · fee ₹${bk.cancelFee} due`, color:C.red };
     return { text:"✕ Cancelled", color:C.red };
   }
+  if (bk.scheduledFor && !bk.released && !bk.workerName) return { text:"📅 Scheduled", color:C.amber };
   return bk.paid ? { text:"✓ Paid", color:C.green } : bk.paymentStatus==="pending_verification" ? { text:"⏳ Verifying", color:C.amber } : { text:"Pending", color:C.amber };
 }
 
@@ -1685,6 +1687,12 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
   const [unavailable,  setUnavailable]  = useState(false);
   const [waitSecs,     setWaitSecs]     = useState(0);
   const [submitErr,    setSubmitErr]    = useState("");
+  const [when,         setWhen]         = useState("now");      // "now" | "later"
+  const [schedDate,    setSchedDate]    = useState("");
+  const [schedTime,    setSchedTime]    = useState("");
+  const [favs,         setFavs]         = useState([]);
+  const [preferred,    setPreferred]    = useState("");
+  const [favIds,       setFavIds]       = useState([]);
 
   const svc     = SERVICES[wtype];
   const custAmt = custProb && custPrc ? (parseInt(custPrc)||0) : 0;
@@ -1697,7 +1705,22 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
   // Real "X online" counts per service type — no fake numbers.
   useEffect(() => {
     apiGet("/workers/counts").then(setWorkerCounts).catch(() => {});
+    apiGet("/customer/favorites").then(r => { setFavs(r.favorites || []); setFavIds((r.favorites || []).map(f => String(f.id))); }).catch(() => {});
   }, []);
+
+  // Date + time the customer picked for "later" (as a real Date), or null
+  const schedAt = when === "later" && schedDate && schedTime ? new Date(`${schedDate}T${schedTime}`) : null;
+  const schedOk = !!schedAt && !isNaN(schedAt) && schedAt - Date.now() >= 90*60*1000 && schedAt - Date.now() <= 7*24*3600*1000;
+  const fmtWhen = d => new Date(d).toLocaleString("en-IN", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" });
+  const pad2 = n => String(n).padStart(2, "0");
+  const dateStr = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  async function toggleFav(workerId, want) {
+    try {
+      const r = await apiPost("/customer/favorites", { workerId, favorite: want });
+      setFavIds((r.favoriteWorkerIds || []).map(String));
+      apiGet("/customer/favorites").then(x => setFavs(x.favorites || [])).catch(() => {});
+    } catch (e) { setSubmitErr(e.message || "Could not update favourites."); }
+  }
 
   function setQty(job, delta) {
     setCart(prev => {
@@ -1733,8 +1756,12 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
     setChecking(true);
     const items = [...cart, ...(custProb?[{id:"cust",name:`Other: ${custProb}`,price:custAmt,qty:1}]:[])];
     const now = new Date();
+    if (when === "later" && !schedOk) { setSubmitErr("Pick a time between 90 minutes and 7 days from now."); setChecking(false); return; }
+    const at = when === "later" ? schedAt : null;
     try {
       const res = await apiPost("/bookings", {
+        ...(at ? { scheduledFor: at.toISOString() } : {}),
+        ...(preferred ? { preferredWorkerId: preferred } : {}),
         customerId: user.id,
         customerName: user.name,
         customerPhone: user.phone,
@@ -1742,8 +1769,8 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
         items,
         address,
         coords,
-        date: now.toLocaleDateString("en-IN"),
-        time: now.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),
+        date: (at || now).toLocaleDateString("en-IN"),
+        time: (at || now).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),
       });
       const w = res.worker;
       setWorker(w);
@@ -1969,6 +1996,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
             <div style={{ fontSize:28, marginBottom:6 }}>😔</div>
             <div style={{ color:C.red, fontWeight:800, fontSize:15 }}>We Are Currently Unavailable</div>
             <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>No {svc.label.toLowerCase()} is online right now. Please try again shortly.</div>
+            <button onClick={() => { setUnavailable(false); setLockedWorker(null); setWhen("later"); setStep(3); }} style={{ marginTop:12, background:svc.color, color:"#0D1117", border:"none", borderRadius:10, padding:"10px 16px", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>📅 Book for later instead</button>
           </div>
         )}
 
@@ -2027,7 +2055,38 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
           {PLATFORM_MARKUP > 0 && <div style={{ color:C.muted, fontSize:11, marginTop:8, lineHeight:1.5 }}>The ₹{PLATFORM_MARKUP} platform charge is paid to ProWorkers (not to the worker). It covers verified workers, secure payment and support. The worker receives the service charge.</div>}
         </div>
 
-        {lockedWorker && (
+        <div style={{ background:C.card2, border:`1px solid ${C.border}`, borderRadius:14, padding:16, marginBottom:12 }}>
+          <div style={{ color:C.muted, fontSize:11, fontWeight:700, letterSpacing:1, marginBottom:10 }}>🕒 WHEN DO YOU NEED THE WORKER?</div>
+          <div style={{ display:"flex", gap:8 }}>
+            {[["now","⚡ Now"],["later","📅 Later"]].map(([k,l]) => (
+              <button key={k} onClick={() => { setWhen(k); setSubmitErr(""); }} style={{ flex:1, padding:"10px 0", borderRadius:10, border:`1.5px solid ${when===k?svc.color:C.border}`, background:when===k?`${svc.color}22`:"transparent", color:when===k?svc.color:C.sub, fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>{l}</button>
+            ))}
+          </div>
+          {when==="later" && (
+            <div style={{ marginTop:12 }}>
+              <div style={{ display:"flex", gap:8 }}>
+                <input type="date" value={schedDate} min={dateStr(new Date())} max={dateStr(new Date(Date.now()+7*24*3600*1000))} onChange={e => setSchedDate(e.target.value)} style={{ flex:1, minWidth:0, padding:"10px 8px", borderRadius:10, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontFamily:"inherit", fontSize:14 }}/>
+                <input type="time" value={schedTime} onChange={e => setSchedTime(e.target.value)} style={{ flex:1, minWidth:0, padding:"10px 8px", borderRadius:10, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontFamily:"inherit", fontSize:14 }}/>
+              </div>
+              <div style={{ color: schedAt && !schedOk ? C.red : C.muted, fontSize:12, marginTop:8, lineHeight:1.5 }}>
+                {schedAt && !schedOk ? "Pick a time between 90 minutes and 7 days from now." : schedOk ? `We'll start looking for a worker 1 hour before ${fmtWhen(schedAt)}.` : "Pick a day and time. We start looking for a worker 1 hour before."}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {favs.filter(f => f.workerType === wtype).length > 0 && (
+          <div style={{ background:C.card2, border:`1px solid ${C.border}`, borderRadius:14, padding:16, marginBottom:12 }}>
+            <div style={{ color:C.muted, fontSize:11, fontWeight:700, letterSpacing:1, marginBottom:10 }}>❤️ ASK MY FAVOURITE FIRST</div>
+            <select value={preferred} onChange={e => setPreferred(e.target.value)} style={{ width:"100%", padding:"10px 8px", borderRadius:10, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontFamily:"inherit", fontSize:14 }}>
+              <option value="">Anyone nearby</option>
+              {favs.filter(f => f.workerType === wtype).map(f => <option key={f.id} value={f.id}>{f.name}{f.isOnline ? " · online" : " · offline"}</option>)}
+            </select>
+            <div style={{ color:C.muted, fontSize:11, marginTop:6 }}>They get your request first. If they don't accept, others can.</div>
+          </div>
+        )}
+
+        {lockedWorker && when==="now" && (
           <div style={{ background:C.card2, border:`1.5px solid ${svc.color}33`, borderRadius:14, padding:"14px 16px", marginBottom:24, display:"flex", alignItems:"center", gap:12 }}>
             <span style={{ fontSize:22 }}>{svc.icon}</span>
             <div>
@@ -2048,7 +2107,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
         )}
 
         <button onClick={confirmBooking} disabled={checking} style={{ width:"100%", padding:"16px 0", background:svc.color, color:"#0D1117", border:"none", borderRadius:14, fontWeight:800, fontSize:16, cursor:checking?"default":"pointer", opacity:checking?0.7:1, fontFamily:"inherit" }}>
-          {checking ? "Booking…" : "✅ Confirm and Book"}
+          {checking ? "Booking…" : when==="later" ? "📅 Confirm and Schedule" : "✅ Confirm and Book"}
         </button>
       </div>
     );
@@ -2115,6 +2174,13 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
           })()}
         </div>
 
+        {booking.scheduledFor && !booking.released && !booking.workerName && booking.status!=="cancelled" && (
+          <div style={{ background:`${C.amber}18`, border:`1.5px solid ${C.amber}55`, borderRadius:16, padding:16, marginBottom:14, textAlign:"center" }}>
+            <div style={{ color:C.amber, fontWeight:800, fontSize:15 }}>📅 Scheduled for {fmtWhen(booking.scheduledFor)}</div>
+            <div style={{ color:C.muted, fontSize:12, marginTop:4, lineHeight:1.5 }}>We'll start looking for a worker 1 hour before. You'll get a notification when someone accepts. You can cancel any time for free before then.</div>
+          </div>
+        )}
+
         {booking.status==="cancelled" ? null : booking.workerName ? (
           <div style={{ background:C.card, border:`2px solid ${svc.color}`, borderRadius:20, padding:20, marginBottom:14, animation:"pt-pop-in 0.35s ease" }}>
             <div style={{ color:C.green, fontSize:11, fontWeight:800, letterSpacing:1, marginBottom:14 }}>✅ THIS WORKER ACCEPTED YOUR JOB</div>
@@ -2132,6 +2198,11 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
             </div>
             {booking.workerPhone && !["cancelled"].includes(booking.status) && (
               <ContactBar phone={booking.workerPhone} name={booking.workerName} onChat={() => setShowChat(true)} C={C}/>
+            )}
+            {booking.workerId && (
+              <button onClick={() => toggleFav(String(booking.workerId), !favIds.includes(String(booking.workerId)))} style={{ width:"100%", marginTop:10, padding:"10px 0", borderRadius:10, border:`1.5px solid ${C.red}55`, background: favIds.includes(String(booking.workerId)) ? `${C.red}22` : "transparent", color:C.red, fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
+                {favIds.includes(String(booking.workerId)) ? "❤️ In your favourites" : "🤍 Add to favourites"}
+              </button>
             )}
           </div>
         ) : (
@@ -3139,6 +3210,21 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
     document.addEventListener("visibilitychange", vis);
     return () => { stopped = true; clearInterval(timer); document.removeEventListener("visibilitychange", vis); };
   }, [isOnline, locConsent, trackingNow]);
+  // With the screen off the browser stops giving locations. While the worker has an accepted job, run a
+  // small foreground service (shows a "ProWorkers is sharing your location" notification) so the customer can still follow them.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !isOnline || locConsent !== "yes" || !trackingNow) return;
+    let id = null, dead = false, last = 0;
+    BackgroundGeolocation.addWatcher(
+      { backgroundMessage: "Sharing your location with your customer for the active job.", backgroundTitle: "ProWorkers · job in progress", requestPermissions: true, stale: false, distanceFilter: 25 },
+      (loc, err) => {
+        if (err || !loc || dead || Date.now() - last < 10000) return;
+        last = Date.now();
+        apiPost("/worker/location", { lat: loc.latitude, lng: loc.longitude }).then(() => setLocOk(true)).catch(() => {});
+      }
+    ).then(wid => { if (dead) BackgroundGeolocation.removeWatcher({ id: wid }); else id = wid; }).catch(() => {});
+    return () => { dead = true; if (id) BackgroundGeolocation.removeWatcher({ id }).catch?.(() => {}); };
+  }, [isOnline, locConsent, trackingNow]);
   const [selReq,     setSelReq]   = useState(null);
   const [showNotifBanner, setShowNotifBanner] = useState(() => {
     return !localStorage.getItem("pt_notif_perm");
@@ -3520,6 +3606,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                 <div style={{ background:C.card2, borderRadius:10, padding:"10px 14px", marginBottom:12 }}>
                   <div style={{ color:C.text, fontWeight:700, fontSize:14 }}>{svcIcon} {req.jobName}</div>
                   <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>📍 {req.address}</div>
+                  {req.scheduledFor && <div style={{ color:C.amber, fontSize:12, fontWeight:800, marginTop:4 }}>📅 For {new Date(req.scheduledFor).toLocaleString("en-IN", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}</div>}
                   <div style={{ display:"flex", gap:10, marginTop:8 }}>
                     <span style={{ background:C.card, color:C.blue, fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:10 }}>📏 {req.distance}</span>
                     <span style={{ background:req.urgency==="now"?C.red+"22":C.amber+"22", color:req.urgency==="now"?C.red:C.amber, fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:10 }}>
@@ -3570,6 +3657,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                 </div>
                 <div style={{ background:C.card2, borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
                   <div style={{ color:C.muted, fontSize:12 }}>📍 {req.address}</div>
+                  {req.scheduledFor && <div style={{ color:C.amber, fontSize:12, fontWeight:800, marginTop:4 }}>📅 For {new Date(req.scheduledFor).toLocaleString("en-IN", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}</div>}
                   <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>📞 {req.customerPhone}</div>
                   <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>✅ {req.acceptedAt}</div>
                   <ContactBar phone={req.customerPhone} name={req.customerName?.split(" ")[0]} onChat={() => setChatJob(req)} C={C}/>
@@ -3613,6 +3701,32 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                 </div>
               ))}
             </div>
+
+            {/* Last 7 days */}
+            {(() => {
+              const days = [];
+              for (let i = 6; i >= 0; i--) { const d = new Date(Date.now() - i*86400000); days.push({ key: localDateKey(d), label: d.toLocaleDateString("en-IN", { weekday:"short" }).slice(0,3), amt: 0 }); }
+              allJobs.filter(r => ["completed","paid"].includes(r.status)).forEach(r => { const d = days.find(x => x.key === r.dateISO); if (d) d.amt += (r.workerNet ?? 0); });
+              const max = Math.max(1, ...days.map(d => d.amt));
+              const week = days.reduce((a, d) => a + d.amt, 0);
+              return (
+                <div style={{ background:C.card, border:"1px solid "+C.border, borderRadius:14, padding:16, marginBottom:16 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:12 }}>
+                    <span style={{ color:C.muted, fontSize:11, fontWeight:700, letterSpacing:1 }}>LAST 7 DAYS</span>
+                    <span style={{ color:C.green, fontWeight:900, fontSize:16 }}>₹{week.toLocaleString("en-IN")}</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:90 }}>
+                    {days.map(d => (
+                      <div key={d.key} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end", height:"100%" }}>
+                        <div style={{ color:C.muted, fontSize:9, marginBottom:2 }}>{d.amt ? "₹"+d.amt : ""}</div>
+                        <div style={{ width:"100%", height: Math.max(3, Math.round(d.amt/max*60)), background: d.amt ? C.green : C.border, borderRadius:4 }}/>
+                        <div style={{ color:C.muted, fontSize:10, marginTop:4 }}>{d.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Action buttons */}
             <div style={{ display:"flex", gap:10, marginBottom:20 }}>
