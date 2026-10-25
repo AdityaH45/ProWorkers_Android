@@ -1955,11 +1955,12 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
             {Object.entries(SERVICES).map(([k,v]) => {
               const cnt = workerCounts[k] || 0;
+              const busyAll = cnt > 0 && (workerCounts.free?.[k] ?? cnt) === 0;
               return (
                 <div key={k} onClick={() => setWtype(k)} style={{ padding:"16px 8px", borderRadius:14, textAlign:"center", cursor:"pointer", border:`2px solid ${wtype===k?v.color:C.border}`, background:wtype===k?`${v.color}15`:C.card2 }}>
                   <div style={{ fontSize:28 }}>{v.icon}</div>
                   <div style={{ fontSize:11, fontWeight:700, color:wtype===k?v.color:C.muted, marginTop:5 }}>{v.label}</div>
-                  <div style={{ color:C.green, fontSize:10, marginTop:3 }}>● {cnt} online</div>
+                  <div style={{ color: busyAll ? C.amber : C.green, fontSize:10, marginTop:3 }}>● {busyAll ? "busy now" : `${cnt} online`}</div>
                 </div>
               );
             })}
@@ -2676,7 +2677,7 @@ function HomeScreen({ user, bookings, setTab, onOpenOrder, C }) {
   useEffect(() => {
     apiGet("/workers/counts").then(setCounts).catch(() => {});
   }, []);
-  const online = counts.electrician + counts.plumber + counts.labour;
+  const online = (counts.electrician || 0) + (counts.plumber || 0) + (counts.labour || 0);
   return (
     <div style={{ padding:20, maxWidth:480, margin:"0 auto" }}>
       <div style={{ marginBottom:22 }}>
@@ -2732,11 +2733,12 @@ function HomeScreen({ user, bookings, setTab, onOpenOrder, C }) {
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
           {Object.entries(SERVICES).map(([k,v]) => {
             const cnt = counts[k] || 0;
+            const busyAll = cnt > 0 && (counts.free?.[k] ?? cnt) === 0;
             return (
               <div key={k} onClick={() => { if(!isW) setTab("book"); }} style={{ background:C.card, border:`1.5px solid ${v.color}33`, borderRadius:14, padding:"16px 8px", textAlign:"center", cursor:isW?"default":"pointer" }}>
                 <div style={{ fontSize:26, marginBottom:5 }}>{v.icon}</div>
                 <div style={{ color:C.text, fontWeight:700, fontSize:11, marginBottom:4 }}>{v.label}</div>
-                <div style={{ color:C.green, fontSize:10, fontWeight:700 }}>● {cnt} online</div>
+                <div style={{ color: busyAll ? C.amber : C.green, fontSize:10, fontWeight:700 }}>● {busyAll ? "busy now" : `${cnt} online`}</div>
               </div>
             );
           })}
@@ -3274,6 +3276,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   const [allJobs,    setAllJobs]  = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [isOnline,   setIsOnline] = useState(initialUser.isOnline !== false);
+  const lastToggleAt = useRef(0);
   // Live location: shared only while online with the app open, only the latest point is stored on the
   // server, and it is deleted when the worker goes offline or logs out. Needs the worker's clear OK.
   const [locConsent, setLocConsent] = useState(() => { try { return localStorage.getItem("pt_loc_consent") || ""; } catch { return ""; } });  // "yes" | "no" | ""
@@ -3323,6 +3326,8 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   const seenReqIds = useRef(null);   // ids of incoming requests the worker has already been told about
   async function loadJobs() {
     try {
+      // The server decides who customers can see. If this phone shows a different Online/Offline, follow the server.
+      apiGet("/worker/status").then(st => { if (typeof st?.isOnline === "boolean" && Date.now() - lastToggleAt.current > 15000) setIsOnline(st.isOnline); }).catch(() => {});
       const data = await apiGet(`/bookings/worker/${user.id}`);
       if (Array.isArray(data)) {
         const list = data.map(normalizeBooking);
@@ -3496,6 +3501,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
 
   async function toggleOnline() {
     const next = !isOnline;
+    lastToggleAt.current = Date.now();
     setIsOnline(next); // optimistic
     try {
       await apiPatch(`/workers/${user.id}/online`, { isOnline: next });
