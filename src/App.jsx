@@ -89,7 +89,7 @@ const SERVICES = {
   plumber:     { label:"Plumber",          icon:"🔧", color:"#388BFD",
     jobs:[{id:"pj1",name:"Pipe Repair / Leak Fix",price:180},{id:"pj2",name:"Tap / Faucet Replace",price:150},{id:"pj3",name:"Bathroom Fitting",price:600},{id:"pj4",name:"Water Tank Cleaning",price:400},{id:"pj5",name:"Drainage Unclogging",price:220},{id:"pj6",name:"Geyser Installation",price:300},{id:"pj7",name:"Pipeline Extension",price:500},{id:"pj8",name:"Motor Pump Work",price:350}] },
   labour:      { label:"Labour / Man Work",icon:"🏗️",color:"#3FB950",
-    jobs:[{id:"lj1",name:"Heavy Lifting / Shifting",price:300,unit:"hr"},{id:"lj2",name:"Wall Painting",price:900,unit:"hr"},{id:"lj3",name:"Tile / Floor Work",price:700,unit:"hr"},{id:"lj4",name:"Civil / Construction",price:500,unit:"hr"},{id:"lj5",name:"Deep Cleaning",price:350,unit:"hr"},{id:"lj6",name:"Furniture Assembly",price:250,unit:"hr"},{id:"lj7",name:"Demolition Work",price:600,unit:"hr"},{id:"lj8",name:"Garden / Outdoor Work",price:280,unit:"hr"}] },
+    jobs:[{id:"lj1",name:"Heavy Lifting / Shifting",price:100,unit:"hr"},{id:"lj2",name:"Wall Painting",price:100,unit:"hr"},{id:"lj3",name:"Tile / Floor Work",price:100,unit:"hr"},{id:"lj4",name:"Civil / Construction",price:100,unit:"hr"},{id:"lj5",name:"Deep Cleaning",price:100,unit:"hr"},{id:"lj6",name:"Furniture Assembly",price:100,unit:"hr"},{id:"lj7",name:"Demolition Work",price:100,unit:"hr"},{id:"lj8",name:"Garden / Outdoor Work",price:100,unit:"hr"}] },
 };
 
 // How many of an item: "2 hr" for hourly work (Labour), "×2" for everything else.
@@ -1664,12 +1664,12 @@ function LiveTrack({ booking, C, svc }) {
   );
 }
 
-function BookingFlow({ onBack, onBooked, C, user, prefill }) {
-  const [step,         setStep]         = useState(1);
+function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
+  const [step,         setStep]         = useState(resume ? 4 : 1);
   const [address,      setAddress]      = useState(prefill?.address || "");
   const [coords,       setCoords]       = useState(prefill?.coords || null);
   const [showMap,      setShowMap]      = useState(false);
-  const [wtype,        setWtype]        = useState(SERVICES[prefill?.serviceType] ? prefill.serviceType : "electrician");
+  const [wtype,        setWtype]        = useState(SERVICES[(resume || prefill)?.serviceType] ? (resume || prefill).serviceType : "electrician");
   const [cart,         setCart]         = useState(() => {
     // "Book again": bring back the same jobs, but only ones that still exist at today's price
     const svcJobs = SERVICES[prefill?.serviceType]?.jobs || [];
@@ -1679,7 +1679,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
   const [custPrc,      setCustPrc]      = useState("");
   const [lockedWorker, setLockedWorker] = useState(null);
   const [worker,       setWorker]       = useState(null);
-  const [booking,      setBooking]      = useState(null);
+  const [booking,      setBooking]      = useState(resume ? { ...resume, _fetchedAt: Date.now() } : null);
   const [showPay,      setShowPay]      = useState(false);
   const [showChat,     setShowChat]     = useState(false);
   const [workerCounts, setWorkerCounts] = useState({ electrician:0, plumber:0, labour:0 });
@@ -2266,7 +2266,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill }) {
           </div>
         )}
 
-        {!booking.paid && booking.paymentMethod!=="cash" && booking.paymentStatus!=="pending_verification" && (
+        {!booking.paid && (booking.status==="completed" || booking.cancelFee>0) && booking.paymentMethod!=="cash" && booking.paymentStatus!=="pending_verification" && (
           <button onClick={() => setShowPay(true)} style={{ width:"100%", padding:"16px 0", background:C.green, color:"#fff", border:"none", borderRadius:14, fontWeight:800, fontSize:16, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>
             💳 Pay ₹{booking.total} Now
           </button>
@@ -2651,7 +2651,7 @@ function ProfileScreen({ user, onLogout, onUpdateUser, C }) {
 
 
 // ── Home Screen ───────────────────────────────────────────────────────────────
-function HomeScreen({ user, bookings, setTab, C }) {
+function HomeScreen({ user, bookings, setTab, onOpenOrder, C }) {
   const isW = user.role==="worker";
   const [counts, setCounts] = useState({ electrician:0, plumber:0, labour:0 });
   useEffect(() => {
@@ -2665,6 +2665,26 @@ function HomeScreen({ user, bookings, setTab, C }) {
         <h1 style={{ margin:"3px 0 0", color:C.text, fontWeight:900, fontSize:24 }}>{user.name}</h1>
         <div style={{ color:C.muted, fontSize:13, marginTop:3 }}>{isW?"Manage your work":""+online+" workers online in Surat"}</div>
       </div>
+
+      {!isW && (() => {
+        const act = (bookings || []).find(b => ["pending_acceptance","assigned","on_way","in_progress"].includes(b.status) || (b.status === "completed" && !b.paid) || (b.status === "cancelled" && b.cancelFee > 0 && !b.paid));
+        if (!act) return null;
+        const sv = SERVICES[act.serviceType] || SERVICES.electrician;
+        const label = act.status === "pending_acceptance" ? (act.scheduledFor && !act.released ? "📅 Scheduled" : "Finding a worker…")
+          : act.status === "assigned" ? "Worker accepted" : act.status === "on_way" ? "Worker is on the way" : act.status === "in_progress" ? "Work in progress"
+          : act.status === "completed" ? "Done · pay now" : "Pay travel fee";
+        return (
+          <button onClick={() => onOpenOrder(act)} style={{ width:"100%", textAlign:"left", background:`${sv.color}18`, border:`2px solid ${sv.color}`, borderRadius:16, padding:"14px 16px", marginBottom:18, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:12 }}>
+            <span style={{ fontSize:26 }}>{sv.icon}</span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ color:sv.color, fontSize:10, fontWeight:800, letterSpacing:1 }}>YOUR ONGOING ORDER</div>
+              <div style={{ color:C.text, fontWeight:800, fontSize:15, marginTop:2 }}>{label}</div>
+              <div style={{ color:C.muted, fontSize:12, marginTop:1 }}>{act.workerName ? `${act.workerName} · ` : ""}₹{act.total}</div>
+            </div>
+            <span style={{ color:sv.color, fontWeight:800, fontSize:13 }}>Open →</span>
+          </button>
+        );
+      })()}
 
       <div style={{ display:"flex", gap:10, marginBottom:20 }}>
         {(isW
@@ -2933,9 +2953,56 @@ function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout 
 // type: React unmounted the old one and everything typed in the form was wiped.
 // Values from WorkerApp come in through `ctx`.
 // ── Withdrawal Modal with success screen + history ─────────────────────────
+// Worker pays ProWorkers the fee they owe from cash jobs (UPI), then says "I paid"; the admin confirms.
+function DuesPayBox({ C, outstanding, pending, onSubmitted }) {
+  const [open, setOpen] = useState(false);
+  const [upi,  setUpi]  = useState("");
+  const [amt,  setAmt]  = useState(String(outstanding));
+  const [utr,  setUtr]  = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { if (open) apiGet("/settings").then(d => setUpi(d.upiId || "")).catch(() => {}); }, [open]);
+  useEffect(() => { setAmt(a => (Number(a) > outstanding || !a) ? String(outstanding) : a); }, [outstanding]);
+  if (pending > 0) {
+    return <div style={{ marginTop:10, background:`${C.amber}18`, border:`1px solid ${C.amber}55`, borderRadius:10, padding:"10px 12px", color:C.amber, fontWeight:700, fontSize:13 }}>⏳ You said you paid ₹{pending}. We are checking it.</div>;
+  }
+  const n = Math.round(Number(amt) || 0);
+  const valid = n >= 1 && n <= outstanding;
+  async function submit() {
+    setErr(""); setBusy(true);
+    try { await apiPost("/worker/dues-payment", { amount: n, utr: utr.trim() }); setOpen(false); setUtr(""); onSubmitted && onSubmitted(); }
+    catch (e) { setErr(e.message || "Could not send. Try again."); }
+    setBusy(false);
+  }
+  if (!open) {
+    return <button onClick={() => setOpen(true)} style={{ marginTop:10, width:"100%", padding:"12px 0", background:C.red, color:"#fff", border:"none", borderRadius:10, fontWeight:800, fontSize:14, cursor:"pointer", fontFamily:"inherit" }}>💳 Pay ₹{outstanding} now</button>;
+  }
+  return (
+    <div style={{ marginTop:10, background:C.card2, border:`1px solid ${C.border}`, borderRadius:12, padding:14 }}>
+      <div style={{ color:C.muted, fontSize:12, marginBottom:6 }}>Amount to pay (₹)</div>
+      <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" style={{ width:"100%", boxSizing:"border-box", background:C.card, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, padding:"10px 12px", fontSize:16, fontFamily:"inherit" }}/>
+      {upi ? (
+        <>
+          <a href={`upi://pay?${buildUpiParams(upi, n || outstanding, "dues")}`} style={{ display:"block", marginTop:10, textAlign:"center", background:C.green, color:"#fff", borderRadius:10, padding:"12px 0", fontWeight:800, fontSize:14, textDecoration:"none" }}>Pay ₹{n || outstanding} with a UPI app</a>
+          <div style={{ marginTop:8, fontSize:12, color:C.muted, display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
+            <span>UPI ID: <b style={{ color:C.text }}>{upi}</b></span>
+            <button onClick={() => { try { navigator.clipboard.writeText(upi); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} }} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.sub, borderRadius:8, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>{copied ? "Copied" : "Copy"}</button>
+          </div>
+        </>
+      ) : <div style={{ marginTop:10, fontSize:12, color:C.muted }}>Loading the UPI ID…</div>}
+      <div style={{ color:C.muted, fontSize:12, margin:"12px 0 6px" }}>After you pay, enter the 12-digit UTR (optional)</div>
+      <input value={utr} onChange={e => setUtr(e.target.value.replace(/\D/g, "").slice(0, 12))} inputMode="numeric" placeholder="UTR number" style={{ width:"100%", boxSizing:"border-box", background:C.card, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, padding:"10px 12px", fontSize:14, fontFamily:"inherit" }}/>
+      {err && <div style={{ color:C.red, fontSize:12, marginTop:8 }}>{err}</div>}
+      <button onClick={submit} disabled={!valid || busy} style={{ marginTop:10, width:"100%", padding:"12px 0", background:C.amber, color:"#0D1117", border:"none", borderRadius:10, fontWeight:800, fontSize:14, cursor: valid && !busy ? "pointer" : "default", opacity: valid && !busy ? 1 : 0.5, fontFamily:"inherit" }}>{busy ? "Sending…" : "✅ I have paid"}</button>
+      <button onClick={() => setOpen(false)} style={{ marginTop:6, width:"100%", background:"transparent", border:"none", color:C.muted, fontSize:12, cursor:"pointer", fontFamily:"inherit", padding:6 }}>Cancel</button>
+    </div>
+  );
+}
+
 function WithdrawModal({ ctx }) {
   const { C, PLATFORM_DEDUCT, CASH_PLATFORM_CUT, availableBalance, cashJobsConfirmedCount, mapWd, platformOwedFromCash, prevWdStatus,
-          setShowWithdraw, setUpiId, setWithdrawHistory, totalWithdrawn, upiId, user, withdrawHistory, duesOutstanding, CASH_DUES_LIMIT } = ctx;
+          setShowWithdraw, setUpiId, setWithdrawHistory, totalWithdrawn, upiId, user, withdrawHistory, duesOutstanding, duesPending, reloadWithdrawals, CASH_DUES_LIMIT } = ctx;
   const [amt, setAmt] = useState("");
   const [upi, setUpi] = useState(upiId);
   const [done, setDone] = useState(false);
@@ -3030,7 +3097,8 @@ function WithdrawModal({ ctx }) {
               <div style={{ background:`${C.red}18`, border:`1px solid ${C.red}55`, borderRadius:12, padding:14, marginBottom:14, fontSize:13, color:C.text, lineHeight:1.5 }}>
                 <b style={{ color:C.red }}>You have to pay ProWorkers ₹{duesOutstanding}</b>. This is our fee from your cash jobs.
                 {duesOutstanding > CASH_DUES_LIMIT ? ` You can't get new jobs until you pay it.` : ` You can't get new jobs if it goes above ₹${CASH_DUES_LIMIT}.`}
-                {" "}We cut it from your online earnings. Or you can pay by UPI and email the screenshot to {SUPPORT_EMAIL}.
+                {" "}We cut it from your online earnings. Or you can pay it now below.
+                <DuesPayBox C={C} outstanding={duesOutstanding} pending={duesPending} onSubmitted={reloadWithdrawals}/>
               </div>
             )}
             <div style={{ background:`${C.green}18`, border:`1px solid ${C.green}44`, borderRadius:12, padding:16, marginBottom:20, textAlign:"center" }}>
@@ -3318,6 +3386,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   // Withdrawals now live on the server so the admin can see and pay them.
   const [withdrawHistory, setWithdrawHistory] = useState([]);
   const [duesPaid, setDuesPaid] = useState(0);
+  const [duesPending, setDuesPending] = useState(0);
   const prevWdStatus = useRef(null);
   const mapWd = w => ({
     ...w,
@@ -3330,6 +3399,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
       const data = await apiGet(`/withdrawals/worker/${user.id}`);
       if (!Array.isArray(data)) return;
       setDuesPaid(data.filter(w => w.kind === "dues" && w.status === "paid").reduce((s, w) => s + (Number(w.amount) || 0), 0));
+      setDuesPending(data.filter(w => w.kind === "dues" && w.status === "requested").reduce((s, w) => s + (Number(w.amount) || 0), 0));
       const list = data.filter(w => w.kind !== "dues").map(mapWd);
       if (prevWdStatus.current) {
         list.forEach(w => {
@@ -3480,7 +3550,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   const ctx = {
     C, PLATFORM_DEDUCT, CASH_PLATFORM_CUT, accepted, availableBalance, calMonth, cashJobsConfirmedCount,
     mapWd, platformOwedFromCash, prevWdStatus, setCalMonth, setSelJobDetail, setShowCalendar, setShowWithdraw, setUpiId,
-    setWithdrawHistory, svcColor, totalWithdrawn, upiId, user, withdrawHistory, duesOutstanding, CASH_DUES_LIMIT,
+    setWithdrawHistory, svcColor, totalWithdrawn, upiId, user, withdrawHistory, duesOutstanding, duesPending, reloadWithdrawals: loadWithdrawals, CASH_DUES_LIMIT,
   };
 
   const TABS = [
@@ -4889,20 +4959,20 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
                   <div style={{ background:C.card, border:`1px solid ${w.status==="requested" ? C.amber+"66" : C.border}`, borderRadius:12, padding:14, marginBottom:12 }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                       <div>
-                        <div style={{ fontWeight:800, fontSize:14 }}>👷 {w.workerName || "Worker"} · <span style={{ color:C.amber }}>₹{w.amount}</span></div>
+                        <div style={{ fontWeight:800, fontSize:14 }}>{w.kind==="dues" ? "💰 Dues from " : "👷 "}{w.workerName || "Worker"} · <span style={{ color:C.amber }}>₹{w.amount}</span></div>
                         <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{w.workerPhone || ""}</div>
                       </div>
                       <span style={{ background:(wc[w.status]||C.muted)+"22", color:wc[w.status]||C.muted, fontSize:10, fontWeight:800, padding:"3px 8px", borderRadius:20 }}>{wl[w.status] || w.status}</span>
                     </div>
                     <div style={{ background:C.card2, borderRadius:8, padding:"8px 12px", margin:"10px 0", fontSize:13 }}>
-                      Pay to UPI: <b>{w.upi}</b>
+                      {w.kind==="dues" ? <>Worker says they paid us. Check your UPI for ₹{w.amount}{w.payoutUtr ? <> · UTR <b>{w.payoutUtr}</b></> : ""}, then press “Mark as paid”.</> : <>Pay to UPI: <b>{w.upi}</b></>}
                     </div>
                     {w.status==="paid" && w.payoutUtr && <div style={{ fontSize:12, color:C.green, marginBottom:6 }}>Payout UTR: {w.payoutUtr}</div>}
                     {w.status==="rejected" && w.adminNote && <div style={{ fontSize:12, color:C.red, marginBottom:6 }}>{w.adminNote}</div>}
                     <div style={{ fontSize:10, color:C.muted }}>Requested {new Date(w.createdAt).toLocaleString("en-IN")}</div>
                     {w.status==="requested" && (
                       <div style={{ display:"flex", gap:8, marginTop:10, flexWrap:"wrap" }}>
-                        <a href={`upi://pay?${new URLSearchParams({ pa:w.upi, pn:w.workerName||"Worker", am:Number(w.amount).toFixed(2), cu:"INR", tn:"ProWorkers payout" })}`} style={{ flex:"1 1 100%", textAlign:"center", textDecoration:"none", background:C.card2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"9px 0", fontWeight:700, fontSize:12 }}>📱 Open in UPI app (on phone)</a>
+                        {w.kind!=="dues" && <a href={`upi://pay?${new URLSearchParams({ pa:w.upi, pn:w.workerName||"Worker", am:Number(w.amount).toFixed(2), cu:"INR", tn:"ProWorkers payout" })}`} style={{ flex:"1 1 100%", textAlign:"center", textDecoration:"none", background:C.card2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"9px 0", fontWeight:700, fontSize:12 }}>📱 Open in UPI app (on phone)</a>}
                         <button onClick={() => reviewWithdrawal(w._id, "paid")} style={{ flex:1, background:C.green, border:"none", color:"#fff", borderRadius:8, padding:"9px 0", fontWeight:800, fontSize:12, cursor:"pointer" }}>✅ Mark as paid</button>
                         <button onClick={() => reviewWithdrawal(w._id, "reject")} style={{ flex:1, background:C.red+"22", border:`1px solid ${C.red}`, color:C.red, borderRadius:8, padding:"9px 0", fontWeight:800, fontSize:12, cursor:"pointer" }}>❌ Reject</button>
                       </div>
@@ -4986,6 +5056,7 @@ function AppInner() {
 
   const [tab,       setTab]       = useState("home");
   const [rebook,    setRebook]    = useState(null);
+  const [resume,    setResume]    = useState(null);   // an ongoing order the customer reopened
   usePushOpen(() => { if (user?.role === "customer") setTab("history"); });
   const [complaint, setComplaint] = useState(null);
   const [toast,     setToast]     = useState(null);
@@ -5164,10 +5235,10 @@ function AppInner() {
   ];
 
   let content;
-  if      (tab==="book")    content = <BookingFlow key={rebook?.id || "new"} user={user} prefill={rebook} onBack={() => { setRebook(null); setTab("home"); }} onBooked={bk => { setRebook(null); addBooking(bk); setTab("history"); }} C={C}/>;
+  if      (tab==="book")    content = <BookingFlow key={resume?.id || rebook?.id || "new"} user={user} prefill={rebook} resume={resume} onBack={() => { setRebook(null); setResume(null); setTab("home"); }} onBooked={bk => { setRebook(null); setResume(null); addBooking(bk); setTab("history"); }} C={C}/>;
   else if (tab==="history") content = <HistoryScreen bookings={bookings} onRebook={b => { setRebook(b); setTab("book"); }} onComplaint={setComplaint} onRated={updated => setBookings(prev => prev.map(b => b.id === updated.id ? updated : b))} C={C}/>;
   else if (tab==="profile") content = <ProfileScreen user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} C={C}/>;
-  else                      content = <HomeScreen user={user} bookings={bookings} setTab={setTab} C={C}/>;
+  else                      content = <HomeScreen user={user} bookings={bookings} setTab={setTab} onOpenOrder={b => { setRebook(null); setResume(b); setTab("book"); }} C={C}/>;
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Inter',system-ui,sans-serif", color:C.text, paddingBottom:72 }}>
