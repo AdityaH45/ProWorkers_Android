@@ -1357,8 +1357,20 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
   const [showRateForm, setShowRateForm] = useState(false);
   const [rated, setRated] = useState(!!booking.userRating);
   const [rateErr, setRateErr] = useState("");
+  const [favIds, setFavIds] = useState(null);     // null = still loading
+  const [favBusy, setFavBusy] = useState(false);
+  useEffect(() => {
+    if (!booking?.workerId) return;
+    apiGet("/customer/favorites").then(r => setFavIds((r.favorites || []).map(f => String(f.id)))).catch(() => setFavIds([]));
+  }, [booking?.workerId]);
   if (!booking) return null;
   const svc = SERVICES[booking.serviceType] || SERVICES.electrician;
+  const isFav = !!(favIds && booking.workerId && favIds.includes(String(booking.workerId)));
+  async function toggleFavourite() {
+    setFavBusy(true);
+    try { const r = await apiPost("/customer/favorites", { workerId: String(booking.workerId), favorite: !isFav }); setFavIds((r.favoriteWorkerIds || []).map(String)); } catch {}
+    setFavBusy(false);
+  }
 
   const rows = [
     ["📅 Date",     booking.date],
@@ -1390,6 +1402,13 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
           ); })()}
         </div>
         <div style={{ padding:"8px 20px 0", color:C.muted, fontSize:12 }}>Booking ID: <span style={{ color:C.amber, fontWeight:700 }}>#{booking.id}</span></div>
+        {booking.workerId && booking.workerName && favIds !== null && (
+          <div style={{ padding:"12px 20px 0" }}>
+            <button onClick={toggleFavourite} disabled={favBusy} style={{ width:"100%", padding:"11px 0", borderRadius:12, border:`1.5px solid ${C.red}66`, background: isFav ? `${C.red}22` : "transparent", color:C.red, fontWeight:800, fontSize:14, cursor:"pointer", fontFamily:"inherit", opacity: favBusy ? 0.6 : 1 }}>
+              {isFav ? `❤️ ${booking.workerName} is your favourite` : `🤍 Add ${booking.workerName} to favourites`}
+            </button>
+          </div>
+        )}
 
         {/* Detail rows */}
         <div style={{ margin:"16px 20px 0", background:C.card2, borderRadius:14, overflow:"hidden" }}>
