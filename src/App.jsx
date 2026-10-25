@@ -3721,7 +3721,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                     <div style={{ width:44, height:44, borderRadius:"50%", background:svcColor+"22", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15, color:svcColor, flexShrink:0 }}>{req.customerAvatar}</div>
                     <div>
                       <div style={{ color:C.text, fontWeight:700, fontSize:15 }}>{req.customerName}</div>
-                      <div style={{ color:C.muted, fontSize:12 }}>📞 {req.customerPhone}</div>
+                      {req.customerPhone && <div style={{ color:C.muted, fontSize:12 }}>📞 {req.customerPhone}</div>}
                     </div>
                   </div>
                   <div style={{ textAlign:"right" }}>
