@@ -1733,7 +1733,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
   const [favIds,       setFavIds]       = useState([]);
 
   const svc     = SERVICES[wtype];
-  const custAmt = custProb && custPrc ? (parseInt(custPrc)||0) : 0;
+  const custAmt = custProb ? Math.max(100, Math.min(5000, parseInt(custPrc)||0)) : 0;   // the server also keeps this between ₹100 and ₹5000
   const jobTotal = cart.reduce((s,i) => s+i.price*(i.qty||1), 0) + custAmt;
   // A cart made only of trial jobs has no platform fee (the server applies the same rule)
   const isTrialCart = cart.length > 0 && !custAmt && cart.every(i => TRIAL_JOB_IDS.includes(i.id));
@@ -2027,7 +2027,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
         <div style={{ background:C.card, border:`1.5px solid ${C.border}`, borderRadius:16, padding:18, marginTop:10, marginBottom:16 }}>
           <div style={{ color:C.amber, fontWeight:800, fontSize:14, marginBottom:12 }}>➕ Other Problem</div>
           <input style={{ ...I, marginBottom:10 }} placeholder="Describe your issue…" value={custProb} onChange={e=>setCustProb(e.target.value)}/>
-          <input style={I} placeholder="Your suggested price ₹" value={custPrc} onChange={e=>setCustPrc(e.target.value)} type="number"/>
+          <input style={I} placeholder="Your suggested price ₹ (minimum 100)" value={custPrc} onChange={e=>setCustPrc(e.target.value)} type="number"/>
           <div style={{ marginTop:10 }}>
             {custPhoto
               ? <div style={{ display:"flex", alignItems:"center", gap:10 }}>
