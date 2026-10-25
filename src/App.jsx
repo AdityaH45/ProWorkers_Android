@@ -85,11 +85,11 @@ const customerFeeFor = t => (Number(t) || 0) < 400 ? 0 : ((Number(t) || 0) <= 10
 
 const SERVICES = {
   electrician: { label:"Electrician",      icon:"⚡", color:"#F0A500",
-    jobs:[{id:"ed0",name:"Visit & Diagnosis (find the problem)",price:100},{id:"ej1",name:"Fan Installation",price:200},{id:"ej2",name:"Light / Switch Repair",price:120},{id:"ej3",name:"MCB Panel Work",price:450},{id:"ej4",name:"Wiring (per room)",price:800},{id:"ej5",name:"Inverter / UPS Setup",price:350},{id:"ej6",name:"Meter Connection",price:250},{id:"ej7",name:"AC Electrical Point",price:300},{id:"ej8",name:"Earthing Work",price:400}] },
+    jobs:[{id:"ed0",name:"Visit & Diagnosis (find the problem)",price:100},{id:"ej1",name:"Fan Installation",price:200},{id:"ej2",name:"Light / Switch Repair",price:120},{id:"ej3",name:"MCB Panel Work",price:450},{id:"ej4",name:"Wiring (per room)",price:800},{id:"ej5",name:"Inverter / UPS Setup",price:350},{id:"ej6",name:"Meter Connection",price:250},{id:"ej7",name:"AC Electrical Point",price:300},{id:"ej8",name:"Earthing Work",price:400},{id:"ej9",name:"No Power in Room / Fault Fix",price:150},{id:"ej10",name:"MCB / Fuse Tripping Fix",price:150},{id:"ej11",name:"Doorbell Fitting",price:120},{id:"ej12",name:"CCTV Camera Fitting",price:300},{id:"ej13",name:"Wi-Fi Point / Cabling",price:250},{id:"ej14",name:"Burnt Switchboard / Socket Repair",price:200},{id:"ej15",name:"Stabilizer Fitting",price:150},{id:"ej16",name:"Motor Starter Fitting",price:250},{id:"ej17",name:"Tube Light / LED Fitting",price:100}] },
   plumber:     { label:"Plumber",          icon:"🔧", color:"#388BFD",
-    jobs:[{id:"pd0",name:"Visit & Diagnosis (find the problem)",price:100},{id:"pj1",name:"Pipe Repair / Leak Fix",price:180},{id:"pj2",name:"Tap / Faucet Replace",price:150},{id:"pj3",name:"Bathroom Fitting",price:600},{id:"pj4",name:"Water Tank Cleaning",price:400},{id:"pj5",name:"Drainage Unclogging",price:220},{id:"pj6",name:"Geyser Installation",price:300},{id:"pj7",name:"Pipeline Extension",price:500},{id:"pj8",name:"Motor Pump Work",price:350}] },
+    jobs:[{id:"pd0",name:"Visit & Diagnosis (find the problem)",price:100},{id:"pj1",name:"Pipe Repair / Leak Fix",price:180},{id:"pj2",name:"Tap / Faucet Replace",price:150},{id:"pj3",name:"Bathroom Fitting",price:600},{id:"pj4",name:"Water Tank Cleaning",price:400},{id:"pj5",name:"Drainage Unclogging",price:220},{id:"pj6",name:"Geyser Installation",price:300},{id:"pj7",name:"Pipeline Extension",price:500},{id:"pj8",name:"Motor Pump Work",price:350},{id:"pj9",name:"Toilet / Flush Tank Repair",price:200},{id:"pj10",name:"Washbasin / Sink Fitting",price:300},{id:"pj11",name:"Water Filter / RO Fitting",price:250},{id:"pj12",name:"Washing Machine Connection",price:150}] },
   labour:      { label:"Labour / Man Work",icon:"🏗️",color:"#3FB950",
-    jobs:[{id:"ld0",name:"Visit & Diagnosis (check the work)",price:100},{id:"lj1",name:"Heavy Lifting / Shifting",price:100,unit:"hr"},{id:"lj2",name:"Wall Painting",price:100,unit:"hr"},{id:"lj3",name:"Tile / Floor Work",price:100,unit:"hr"},{id:"lj4",name:"Civil / Construction",price:100,unit:"hr"},{id:"lj5",name:"Deep Cleaning",price:100,unit:"hr"},{id:"lj6",name:"Furniture Assembly",price:100,unit:"hr"},{id:"lj7",name:"Demolition Work",price:100,unit:"hr"},{id:"lj8",name:"Garden / Outdoor Work",price:100,unit:"hr"}] },
+    jobs:[{id:"ld0",name:"Visit & Diagnosis (check the work)",price:100},{id:"lj1",name:"Heavy Lifting / Shifting",price:100,unit:"hr"},{id:"lj2",name:"Wall Painting",price:100,unit:"hr"},{id:"lj3",name:"Tile / Floor Work",price:100,unit:"hr"},{id:"lj4",name:"Civil / Construction",price:100,unit:"hr"},{id:"lj5",name:"Deep Cleaning",price:100,unit:"hr"},{id:"lj6",name:"Furniture Assembly",price:100,unit:"hr"},{id:"lj7",name:"Demolition Work",price:100,unit:"hr"},{id:"lj8",name:"Garden / Outdoor Work",price:100,unit:"hr"},{id:"lj9",name:"Terrace Waterproofing / Leakage Repair",price:100,unit:"hr"}] },
 };
 
 // How many of an item: "2 hr" for hourly work (Labour), "×2" for everything else.
@@ -679,6 +679,23 @@ async function apiSubmitUtr(bookingId, method, label, utr) {
 // Maps a real Booking document (from MongoDB) into the shape the customer-facing
 // UI expects. Keeps "id" / "customerLocation" aliases so existing screens don't
 // need to change, while everything underneath is real backend data.
+// Shrinks a picked photo to a small JPEG (about 60 KB) so it is quick to upload
+function shrinkPhoto(file, max = 720) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.6));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
+    img.src = url;
+  });
+}
 function normalizeBooking(b) {
   return {
     ...b,
@@ -1429,6 +1446,7 @@ function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, 
               <span style={{ color:svc.color, fontWeight:700, fontSize:13 }}>₹{item.price*(item.qty||1)}</span>
             </div>
           ))}
+          {booking.problemPhoto && <img src={booking.problemPhoto} alt="Problem photo" style={{ width:"100%", maxHeight:260, objectFit:"cover", borderRadius:12, marginTop:10, border:`1px solid ${C.border}` }}/>}
           {booking.status === "cancelled" ? (
             <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0", fontWeight:900, color: booking.cancelFee>0 ? C.amber : C.muted, fontSize:15 }}>
               <span>{booking.cancelFee>0 ? "Travel fee (cancelled)" : "Cancelled · no charge"}</span><span>{booking.cancelFee>0 ? `₹${booking.cancelFee}` : "₹0"}</span>
@@ -1696,6 +1714,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
   });
   const [custProb,     setCustProb]     = useState("");
   const [custPrc,      setCustPrc]      = useState("");
+  const [custPhoto,    setCustPhoto]    = useState("");
   const [lockedWorker, setLockedWorker] = useState(null);
   const [worker,       setWorker]       = useState(null);
   const [booking,      setBooking]      = useState(resume ? { ...resume, _fetchedAt: Date.now() } : null);
@@ -1781,6 +1800,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
       const res = await apiPost("/bookings", {
         ...(at ? { scheduledFor: at.toISOString() } : {}),
         ...(preferred ? { preferredWorkerId: preferred } : {}),
+        ...(custPhoto && custProb ? { problemPhoto: custPhoto } : {}),
         customerId: user.id,
         customerName: user.name,
         customerPhone: user.phone,
@@ -2008,7 +2028,19 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
           <div style={{ color:C.amber, fontWeight:800, fontSize:14, marginBottom:12 }}>➕ Other Problem</div>
           <input style={{ ...I, marginBottom:10 }} placeholder="Describe your issue…" value={custProb} onChange={e=>setCustProb(e.target.value)}/>
           <input style={I} placeholder="Your suggested price ₹" value={custPrc} onChange={e=>setCustPrc(e.target.value)} type="number"/>
+          <div style={{ marginTop:10 }}>
+            {custPhoto
+              ? <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <img src={custPhoto} alt="problem" style={{ width:64, height:64, objectFit:"cover", borderRadius:10, border:`1px solid ${C.border}` }}/>
+                  <button onClick={() => setCustPhoto("")} style={{ background:"transparent", border:`1px solid ${C.border}`, color:C.sub, borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:700 }}>Remove photo</button>
+                </div>
+              : <label style={{ display:"inline-block", background:C.card2, border:`1px dashed ${C.border}`, color:C.sub, borderRadius:10, padding:"9px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  📷 Add a photo of the problem (optional)
+                  <input type="file" accept="image/*" style={{ display:"none" }} onChange={async e => { const file = e.target.files && e.target.files[0]; e.target.value = ""; if (file) { try { setCustPhoto(await shrinkPhoto(file)); } catch { setSubmitErr("Could not read that photo."); } } }}/>
+                </label>}
+          </div>
           {custProb && <div style={{ color:C.muted, fontSize:11, marginTop:8 }}>⚠️ Worker confirms final price on arrival.</div>}
+          <div style={{ color:C.muted, fontSize:11, marginTop:6 }}>🧰 Workers do not bring parts or materials. Please keep them ready; the worker only charges for the work.</div>
         </div>
 
         {unavailable && (
@@ -2254,6 +2286,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
               <span>{item.name}{qtyText(item) ? ` · ${qtyText(item)}` : ""}</span><span>₹{item.price*(item.qty||1)}</span>
             </div>
           ))}
+          {booking.problemPhoto && <img src={booking.problemPhoto} alt="Problem photo" style={{ width:"100%", maxHeight:260, objectFit:"cover", borderRadius:12, marginTop:10, border:`1px solid ${C.border}` }}/>}
           {booking.platformFee > 0 && (
             <>
               <div style={{ borderTop:`1px solid ${C.border}`, marginTop:10, paddingTop:10, display:"flex", justifyContent:"space-between", color:C.text, fontSize:13, fontWeight:700 }}>
