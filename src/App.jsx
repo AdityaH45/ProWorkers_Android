@@ -8,6 +8,22 @@ import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { App as CapApp } from "@capacitor/app";
+
+// ── Phone back button / back swipe ───────────────────────────────────────────
+// Open windows and sub-steps register a "close me" action here. Back runs the newest one;
+// with nothing open it goes Home, and on Home a second press within 2 seconds exits.
+const backStack = [];
+function useBackClose(active, fn) {
+  const ref = useRef(fn);
+  ref.current = fn;
+  useEffect(() => {
+    if (!active) return;
+    const h = { fn: () => ref.current && ref.current() };
+    backStack.push(h);
+    return () => { const i = backStack.indexOf(h); if (i >= 0) backStack.splice(i, 1); };
+  }, [active]);
+}
 
 // ── Password field with a show / hide (eye) button ───────────────────────────
 // Drop-in replacement for <input type="password">. Pass the same style / value /
@@ -288,6 +304,7 @@ function navLink(b) {
 const mapsGet = path => apiGet(`/maps/${path}`);
 
 function FullMapScreen({ onConfirm, onClose, C }) {
+  useBackClose(true, onClose);
   const mapRef     = useRef(null);
   const mapObj     = useRef(null);
   const markerRef  = useRef(null);
@@ -1009,6 +1026,7 @@ function AuthScreen({ onAuth }) {
 
 // ── Reset Password Modal ──────────────────────────────────────────────────────
 function ResetPasswordModal({ AC, onClose }) {
+  useBackClose(true, onClose);
   const [step,    setStep]   = useState(1);
   const [email,   setEmail]  = useState("");
   const [otp,     setOtp]    = useState("");
@@ -1100,6 +1118,7 @@ function ResetPasswordModal({ AC, onClose }) {
 // ── Payment Modal ─────────────────────────────────────────────────────────────
 function PaymentModal({ total, jobTotal, platformMarkup, cashCharge = 0, noCash = false, svc, workerName, workerAvatar, bookingId, onSubmitUtr, onPay, onClose, C }) {
   const [step,    setStep]    = useState("choose");
+  useBackClose(true, () => (step === "utr" ? setStep("choose") : onClose()));
   const [method,  setMethod]  = useState("");
   const [cardNum, setCardNum] = useState("");
   const [cardExp, setCardExp] = useState("");
@@ -1371,6 +1390,7 @@ function bookingChip(bk, C) {
 }
 
 function BookingDetailModal({ booking, onClose, onComplaint, onRated, onRebook, C }) {
+  useBackClose(true, onClose);
   const [showRateForm, setShowRateForm] = useState(false);
   const [rated, setRated] = useState(!!booking.userRating);
   const [rateErr, setRateErr] = useState("");
@@ -1548,6 +1568,7 @@ function ContactBar({ phone, name, onChat, C }) {
 
 // In-app chat for one booking (customer <-> assigned worker)
 function ChatModal({ booking, meRole, otherName, otherPhone, C, onClose }) {
+  useBackClose(true, onClose);
   const [msgs, setMsgs] = useState([]);
   const [open, setOpen] = useState(true);
   const [text, setText] = useState("");
@@ -1703,6 +1724,7 @@ function LiveTrack({ booking, C, svc }) {
 
 function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
   const [step,         setStep]         = useState(resume ? 4 : 1);
+  useBackClose(step > 1 && step < 4, () => setStep(s => s - 1));
   const [address,      setAddress]      = useState(prefill?.address || "");
   const [coords,       setCoords]       = useState(prefill?.coords || null);
   const [showMap,      setShowMap]      = useState(false);
@@ -2347,6 +2369,7 @@ function BookingFlow({ onBack, onBooked, C, user, prefill, resume }) {
 
 // ── Complaint Modal ───────────────────────────────────────────────────────────
 function ComplaintModal({ booking, onClose, onSubmit, C }) {
+  useBackClose(true, onClose);
   const [type, setType] = useState("quality");
   const [text, setText] = useState("");
   if (!booking) return null;
@@ -2425,6 +2448,7 @@ function HistoryScreen({ bookings, onComplaint, onRated, onRebook, C }) {
 // ── Profile ───────────────────────────────────────────────────────────────────
 // ── Profile Edit Modal ────────────────────────────────────────────────────────
 function ProfileEditModal({ user, onSave, onClose, C }) {
+  useBackClose(true, onClose);
   const [name,  setName]  = useState(user.name  || "");
   const [email, setEmail] = useState(user.email || "");
   const [phone, setPhone] = useState(user.phone || "");
@@ -2567,6 +2591,7 @@ function ProfileEditModal({ user, onSave, onClose, C }) {
 
 // ── Worker Completed Job Detail Modal ─────────────────────────────────────────
 function WorkerJobDetailModal({ job, C, svcColor, svcIcon, onClose }) {
+  useBackClose(true, onClose);
   if (!job) return null;
   const svcLabel = SERVICES[job.serviceType]?.label || "Service";
   const gross = job.amount || 0;
@@ -3061,6 +3086,7 @@ function WithdrawModal({ ctx }) {
   const [upi, setUpi] = useState(upiId);
   const [done, setDone] = useState(false);
   const [showWHistory, setShowWHistory] = useState(false);
+  useBackClose(showWHistory, () => setShowWHistory(false));
   const [withdrawnAmt, setWithdrawnAmt] = useState(0);
   const [withdrawnUpi, setWithdrawnUpi] = useState("");
   const [withdrawId,   setWithdrawId]   = useState("");
@@ -3205,6 +3231,7 @@ function CalendarView({ ctx }) {
 
   const today = localDateKey(new Date());
   const [selDate, setSelDate] = useState(null);
+  useBackClose(!!selDate, () => setSelDate(null));
   const selJobs = selDate ? (jobsByDate[selDate]||[]) : [];
   const selKey = `${year}-${String(month+1).padStart(2,"0")}`;
 
@@ -3304,6 +3331,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   const { t } = useLang();
   const [user, setUser] = useState(initialUser);
   const [tab,        setTab]      = useState("requests");
+  useBackClose(tab !== "requests", () => setTab("requests"));
   usePushOpen(d => setTab(d.type === "new_request" ? "requests" : d.type === "withdrawal" ? "earnings" : "active"));
   // Real bookings assigned to this worker — no more fake DEMO_REQUESTS.
   const [allJobs,    setAllJobs]  = useState([]);
@@ -3349,6 +3377,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
     return () => { dead = true; if (id) BackgroundGeolocation.removeWatcher({ id }).catch?.(() => {}); };
   }, [isOnline, locConsent, trackingNow]);
   const [selReq,     setSelReq]   = useState(null);
+  useBackClose(!!selReq, () => setSelReq(null));
   const [showNotifBanner, setShowNotifBanner] = useState(() => {
     return !localStorage.getItem("pt_notif_perm");
   });
@@ -3439,6 +3468,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
 
   // Withdrawal state + history
   const [showWithdraw, setShowWithdraw] = useState(false);
+  useBackClose(showWithdraw, () => setShowWithdraw(false));
   const [upiId, setUpiId] = useState(() => localStorage.getItem("pt_upi_"+initialUser.id)||"");
   // Withdrawals now live on the server so the admin can see and pay them.
   const [withdrawHistory, setWithdrawHistory] = useState([]);
@@ -3482,6 +3512,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
 
   // Calendar view
   const [showCalendar, setShowCalendar] = useState(false);
+  useBackClose(showCalendar, () => setShowCalendar(false));
   const [calMonth, setCalMonth] = useState(() => new Date());
 
   const svcColor = user.workerType ? (SERVICES[user.workerType]?.color || C.amber) : C.amber;
@@ -3993,10 +4024,12 @@ function MiniBar({ data, C }) {
 
 // ── Admin: one worker's full details (jobs, calendar, earnings, amount left to pay) ──
 function WorkerDetail({ workerId, C, onClose }) {
+  useBackClose(true, onClose);
   const [data, setData]   = useState(null);
   const [err, setErr]     = useState("");
   const [month, setMonth] = useState(null);      // { y, m } (m = 0-11)
   const [selDay, setSelDay] = useState(null);    // "YYYY-MM-DD"
+  useBackClose(!!selDay, () => setSelDay(null));
   const [duesAmt, setDuesAmt] = useState("");
   const [duesMsg, setDuesMsg] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -4338,6 +4371,7 @@ function AutoVerifyCard({ C, token }) {
 // Full-screen calendar view for "Total platform revenue" (mode "revenue")
 // and "Platform earnings" (mode "earnings": what ProWorkers keeps).
 function RevenueDetail({ mode, bookings, C, onClose }) {
+  useBackClose(true, onClose);
   const isEarn = mode === "earnings";
   const valid = useMemo(() => bookings.filter(b => b.status !== "cancelled"), [bookings]);
   const days = useMemo(() => {
@@ -4359,6 +4393,7 @@ function RevenueDetail({ mode, bookings, C, onClose }) {
   const [month, setMonth] = useState({ y: base.getFullYear(), m: base.getMonth() });
   const [open, setOpen] = useState(null);
   const [selDay, setSelDay] = useState(null);
+  useBackClose(!!selDay, () => setSelDay(null));
   const pad = n => String(n).padStart(2, "0");
   const prefix = `${month.y}-${pad(month.m + 1)}`;
   const mDays = all.filter(d => d.day.startsWith(prefix)).sort((a, b) => b.day.localeCompare(a.day));
@@ -4474,6 +4509,7 @@ function RevenueDetail({ mode, bookings, C, onClose }) {
 
 function AdminApp({ user, onLogout, C, toast, setToast }) {
   const [tab, setTab] = useState("overview");
+  useBackClose(tab !== "overview", () => setTab("overview"));
   usePushOpen(d => setTab(({ payment:"payments", withdrawal:"withdrawals", complaint:"complaints" })[d.type] || "overview"));
   const [selWorker, setSelWorker] = useState(null);
   const [revView, setRevView] = useState(null);   // "revenue" | "earnings"
@@ -5113,11 +5149,25 @@ function AppInner() {
   });
 
   const [tab,       setTab]       = useState("home");
+  useBackClose(!!user && tab !== "home", () => setTab("home"));
   const [rebook,    setRebook]    = useState(null);
   const [resume,    setResume]    = useState(null);   // an ongoing order the customer reopened
   usePushOpen(() => { if (user?.role === "customer") setTab("history"); });
   const [complaint, setComplaint] = useState(null);
   const [toast,     setToast]     = useState(null);
+  // Phone back button: close the newest open window / step; otherwise (on Home) press twice to exit
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let last = 0, handle = null, gone = false;
+    CapApp.addListener("backButton", () => {
+      const top = backStack[backStack.length - 1];
+      if (top) { top.fn(); return; }
+      if (Date.now() - last < 2000) { CapApp.exitApp(); return; }
+      last = Date.now();
+      setToast({ msg: "Press back again to exit", color: "#E3B341" });
+    }).then(h => { if (gone) h.remove(); else handle = h; }).catch(() => {});
+    return () => { gone = true; if (handle) handle.remove(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [showNotifBanner, setShowNotifBanner] = useState(() => !localStorage.getItem("pt_notif_perm"));
 
   // Register this phone for push notifications whenever someone is logged in
