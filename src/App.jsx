@@ -9,6 +9,7 @@ import { Share } from "@capacitor/share";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { App as CapApp } from "@capacitor/app";
+import policyHtml from "../public/privacy.html?raw";
 
 // ── Phone back button / back swipe ───────────────────────────────────────────
 // Open windows and sub-steps register a "close me" action here. Back runs the newest one;
@@ -34,7 +35,7 @@ function PolicyModal({ onClose }) {
         <div style={{ color:"#E6EDF3", fontWeight:800, fontSize:16 }}>Privacy Policy</div>
         <button onClick={onClose} style={{ background:"#21262D", border:"none", color:"#E6EDF3", borderRadius:10, padding:"8px 16px", fontWeight:700, fontSize:14, cursor:"pointer" }}>Close</button>
       </div>
-      <iframe title="Privacy Policy" src="/privacy.html" style={{ flex:1, width:"100%", border:"none", background:"#fff" }}/>
+      <iframe title="Privacy Policy" srcDoc={policyHtml} style={{ flex:1, width:"100%", border:"none", background:"#fff" }}/>
     </div>
   );
 }
@@ -5185,18 +5186,33 @@ function AppInner() {
   usePushOpen(() => { if (user?.role === "customer") setTab("history"); });
   const [complaint, setComplaint] = useState(null);
   const [toast,     setToast]     = useState(null);
-  // Phone back button: close the newest open window / step; otherwise (on Home) press twice to exit
+  // Back button / back swipe (phone app and browser): close the newest open window or step,
+  // otherwise go Home; on Home press back twice within 2 seconds to leave.
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
     let last = 0, handle = null, gone = false;
-    CapApp.addListener("backButton", () => {
+    const native = Capacitor.isNativePlatform();
+    function handleBack() {
       const top = backStack[backStack.length - 1];
       if (top) { top.fn(); return; }
-      if (Date.now() - last < 2000) { CapApp.exitApp(); return; }
+      if (Date.now() - last < 2000) {
+        if (native) CapApp.exitApp();
+        else { gone = true; window.removeEventListener("popstate", onPop); window.history.go(-2); }   // step out of the two entries we added
+        return;
+      }
       last = Date.now();
       setToast({ msg: "Press back again to exit", color: "#E3B341" });
-    }).then(h => { if (gone) h.remove(); else handle = h; }).catch(() => {});
-    return () => { gone = true; if (handle) handle.remove(); };
+    }
+    function onPop() { window.history.pushState({ pw: 1 }, ""); handleBack(); }   // stay on this page, then act
+    if (native) {
+      CapApp.addListener("backButton", handleBack).then(h => { if (gone) h.remove(); else handle = h; }).catch(() => {});
+    } else {
+      try {
+        window.history.replaceState({ pw: 0 }, "");
+        window.history.pushState({ pw: 1 }, "");
+        window.addEventListener("popstate", onPop);
+      } catch {}
+    }
+    return () => { gone = true; if (handle) handle.remove(); window.removeEventListener("popstate", onPop); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [showNotifBanner, setShowNotifBanner] = useState(() => !localStorage.getItem("pt_notif_perm"));
 
@@ -5349,7 +5365,10 @@ function AppInner() {
     setToast({ msg:"✅ Profile updated!", color:C.green });
   }
 
-  if (!user) return <AuthScreen onAuth={handleAuth}/>;
+  if (!user) return (<>
+    <AuthScreen onAuth={handleAuth}/>
+    {toast && <Toast msg={toast.msg} color={toast.color} onDone={() => setToast(null)}/>}
+  </>);
 
   const isWorker = user.role === "worker";
   const isAdmin  = user.role === "admin";
