@@ -1024,10 +1024,6 @@ function AuthScreen({ onAuth }) {
         }}>
           {loading ? t("please_wait") : isReg ? t("create_account") : t("sign_in")}
         </button>
-        <div style={{ textAlign:"center", color:AC.muted, fontSize:12, marginBottom:14 }}>
-          {isReg ? "By creating an account you accept our " : "Read our "}
-          <span onClick={()=>setShowPolicy(true)} style={{ color:AC.amber, fontWeight:700, cursor:"pointer", textDecoration:"underline" }}>Privacy Policy</span>
-        </div>
         </form>
 
         <div style={{ textAlign:"center", color:AC.muted, fontSize:13 }}>
@@ -1036,6 +1032,10 @@ function AuthScreen({ onAuth }) {
             style={{ color:AC.amber, fontWeight:700, cursor:"pointer" }}>
             {isReg ? t("sign_in_link") : t("create_account_link")}
           </span>
+        </div>
+        <div style={{ textAlign:"center", color:AC.muted, fontSize:12, marginTop:22 }}>
+          {isReg ? "By creating an account you accept our " : ""}
+          <span onClick={()=>setShowPolicy(true)} style={{ color:AC.amber, fontWeight:700, cursor:"pointer", textDecoration:"underline" }}>Privacy Policy</span>
         </div>
       </div>
       {showPolicy && <PolicyModal onClose={() => setShowPolicy(false)}/>}
@@ -2740,9 +2740,11 @@ function ProfileScreen({ user, onLogout, onUpdateUser, C }) {
 
       <button onClick={() => setShowEdit(true)} style={{ width:"100%", padding:"13px 0", background:`${ac}18`, color:ac, border:`1.5px solid ${ac}44`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("edit_profile")}</button>
       <button onClick={() => setShowReset(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.blue||"#388BFD", border:`1.5px solid ${C.blue||"#388BFD"}33`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("change_password")}</button>
-      <button onClick={() => setShowPolicy(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.sub||C.muted, border:`1.5px solid ${C.border}`, borderRadius:14, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>📄 Privacy Policy</button>
       <SupportCard C={C}/>
       <button onClick={onLogout} style={{ width:"100%", padding:"14px 0", background:`${C.red}18`, color:C.red, border:`1.5px solid ${C.red}33`, borderRadius:14, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>{t("sign_out")}</button>
+      <div style={{ textAlign:"center", marginTop:18, marginBottom:8 }}>
+        <span onClick={() => setShowPolicy(true)} style={{ color:C.muted, fontSize:13, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}>Privacy Policy</span>
+      </div>
       {showPolicy && <PolicyModal onClose={() => setShowPolicy(false)}/>}
       {showReset && <ResetPasswordModal AC={{ bg:"#0D1117", card:"#161B22", card2:"#1C2333", border:"#21262D", text:"#E6EDF3", muted:"#6E7681", amber:"#F0A500", red:"#F85149" }} onClose={() => setShowReset(false)}/>}
       {showEdit  && <ProfileEditModal user={user} onSave={u => { onUpdateUser(u); setShowEdit(false); }} onClose={() => setShowEdit(false)} C={C}/>}
@@ -3043,9 +3045,11 @@ function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout 
 
       <button onClick={onEditProfile} style={{ width:"100%", padding:"13px 0", background:`${svcColor}18`, color:svcColor, border:`1.5px solid ${svcColor}44`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("edit_profile")}</button>
       <button onClick={() => setShowReset(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.blue||"#388BFD", border:`1.5px solid ${C.blue||"#388BFD"}33`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("change_password")}</button>
-      <button onClick={() => setShowPolicy(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.sub||C.muted, border:`1.5px solid ${C.border}`, borderRadius:14, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"inherit", marginBottom:12 }}>📄 Privacy Policy</button>
       <SupportCard C={C}/>
       <button onClick={onLogout} style={{ width:"100%", padding:"14px 0", background:`${C.red}18`, color:C.red, border:`1.5px solid ${C.red}33`, borderRadius:14, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>{t("sign_out")}</button>
+      <div style={{ textAlign:"center", marginTop:18, marginBottom:8 }}>
+        <span onClick={() => setShowPolicy(true)} style={{ color:C.muted, fontSize:13, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}>Privacy Policy</span>
+      </div>
       {showPolicy && <PolicyModal onClose={() => setShowPolicy(false)}/>}
       {showReset && <ResetPasswordModal AC={{ bg:"#0D1117", card:"#161B22", card2:"#1C2333", border:"#21262D", text:"#E6EDF3", muted:"#6E7681", amber:"#F0A500", red:"#F85149" }} onClose={() => setShowReset(false)}/>}
     </div>
