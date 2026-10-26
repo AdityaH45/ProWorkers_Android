@@ -4385,6 +4385,33 @@ async function exportCsv(filename, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// Save / share a PDF table. Web: downloads it. Android app: opens the share sheet.
+async function exportPdf(filename, title, subtitle, head, body) {
+  const jm = await import("jspdf"), at = await import("jspdf-autotable");
+  const pick = m => [m.default, m.default && m.default.default, m.autoTable].find(f => typeof f === "function");
+  const jsPDF = jm.jsPDF || (jm.default && jm.default.jsPDF) || jm.default, autoTable = pick(at);
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  doc.setFontSize(16); doc.text(title, 40, 40);
+  doc.setFontSize(9); doc.setTextColor(110); doc.text(subtitle, 40, 56); doc.setTextColor(0);
+  const last = body.length - 1;
+  autoTable(doc, {
+    head: [head], body, startY: 68, theme: "grid",
+    styles: { fontSize: 7, cellPadding: 3 },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontSize: 7 },
+    didParseCell: d => { if (d.section === "body" && d.row.index === last) { d.cell.styles.fontStyle = "bold"; d.cell.styles.fillColor = [240, 240, 240]; } },
+    margin: { left: 40, right: 40 },
+  });
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(`ProWorkers · page ${i} of ${pages}`, 40, doc.internal.pageSize.getHeight() - 20); }
+  if (Capacitor.isNativePlatform()) {
+    const b64 = doc.output("datauristring").split(",")[1];
+    const w = await Filesystem.writeFile({ path: filename, data: b64, directory: Directory.Cache });
+    await Share.share({ title: filename, url: w.uri, dialogTitle: "Save or send this file" });
+    return;
+  }
+  doc.save(filename);
+}
+
 // Admin switch for "auto-verify UPI payments" (Android app only)
 function AutoVerifyCard({ C, token }) {
   const [enabled, setEnabled] = useState(null);   // null = checking
@@ -4434,7 +4461,7 @@ function AutoVerifyCard({ C, token }) {
 function RevenueDetail({ mode, bookings, C, onClose }) {
   useBackClose(true, onClose);
   const isEarn = mode === "earnings";
-  const valid = useMemo(() => bookings.filter(b => b.status !== "cancelled"), [bookings]);
+  const valid = useMemo(() => bookings.filter(b => b.paid === true), [bookings]);   // money really received
   const days = useMemo(() => {
     const m = {};
     valid.forEach(b => {
@@ -4468,7 +4495,7 @@ function RevenueDetail({ mode, bookings, C, onClose }) {
   const card = { background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"14px 16px", marginBottom:12 };
   const row = (l, v, col) => <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, padding:"4px 0" }}><span style={{ color:C.muted }}>{l}</span><b style={{ color:col || C.text }}>{v}</b></div>;
   const [exporting, setExporting] = useState(false);
-  async function doExport(list, label) {
+  async function doExport(list, label, fmt = "csv") {
     if (!list.length) return;
     setExporting(true);
     try {
@@ -4480,7 +4507,9 @@ function RevenueDetail({ mode, bookings, C, onClose }) {
       }));
       const t = c => body.reduce((a, r) => a + (Number(r[c]) || 0), 0);
       body.push(["TOTAL","","","","","","", t(7), t(8), t(9), t(10), t(11)]);
-      await exportCsv(`ProWorkers_${label}_${isEarn ? "earnings" : "revenue"}.csv`, [head, ...body]);
+      const base = `ProWorkers_${label}_${isEarn ? "earnings" : "revenue"}`;
+      if (fmt === "pdf") await exportPdf(base + ".pdf", `ProWorkers ${isEarn ? "platform earnings" : "revenue"}: ${label}`, `Paid bookings only · created ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} (IST)`, head, body);
+      else await exportCsv(base + ".csv", [head, ...body]);
     } catch (e) { window.alert("Could not export: " + (e?.message || e)); }
     setExporting(false);
   }
@@ -4496,7 +4525,7 @@ function RevenueDetail({ mode, bookings, C, onClose }) {
       </div>
       <div style={{ maxWidth:760, margin:"0 auto", padding:"16px 16px 60px" }}>
         <div style={{ ...card, background:`linear-gradient(135deg, ${accent}22, ${accent}08)`, border:`1px solid ${accent}44` }}>
-          <div style={{ fontSize:12, fontWeight:700, color:accent }}>{isEarn ? "TOTAL KEPT BY PLATFORM (ALL TIME)" : "TOTAL BILLED TO CUSTOMERS (ALL TIME)"}</div>
+          <div style={{ fontSize:12, fontWeight:700, color:accent }}>{isEarn ? "TOTAL KEPT BY PLATFORM (ALL TIME)" : "TOTAL RECEIVED FROM CUSTOMERS (ALL TIME)"}</div>
           <div style={{ fontSize:32, fontWeight:900 }}>{rupee(allTotal)}</div>
           <div style={{ fontSize:12, color:C.muted }}>{allOrders} orders · avg {rupee(allOrders ? allTotal / allOrders : 0)} per order</div>
         </div>
@@ -4537,7 +4566,9 @@ function RevenueDetail({ mode, bookings, C, onClose }) {
 
         <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
           <button disabled={exporting || !mDays.length} onClick={() => doExport(mDays, prefix)} style={{ flex:1, minWidth:150, background:C.card2, border:`1px solid ${C.border}`, color:C.text, borderRadius:10, padding:"10px 12px", fontWeight:800, fontSize:12, cursor:"pointer", opacity: mDays.length ? 1 : 0.5 }}>📥 Export {mName} (Excel)</button>
+          <button disabled={exporting || !mDays.length} onClick={() => doExport(mDays, prefix, "pdf")} style={{ flex:1, minWidth:150, background:C.card2, border:`1px solid ${C.border}`, color:C.text, borderRadius:10, padding:"10px 12px", fontWeight:800, fontSize:12, cursor:"pointer", opacity: mDays.length ? 1 : 0.5 }}>📄 Export {mName} (PDF)</button>
           {selDay && days[selDay] && <button disabled={exporting} onClick={() => doExport([days[selDay]], selDay)} style={{ flex:1, minWidth:150, background:C.amber, border:"none", color:"#000", borderRadius:10, padding:"10px 12px", fontWeight:800, fontSize:12, cursor:"pointer" }}>📥 Export {dayLabel(selDay).replace(/, \d{4}$/, "")}</button>}
+          {selDay && days[selDay] && <button disabled={exporting} onClick={() => doExport([days[selDay]], selDay, "pdf")} style={{ flex:1, minWidth:150, background:C.card2, border:`1px solid ${C.border}`, color:C.text, borderRadius:10, padding:"10px 12px", fontWeight:800, fontSize:12, cursor:"pointer" }}>📄 {dayLabel(selDay).replace(/, \d{4}$/, "")} (PDF)</button>}
         </div>
         {selDay && <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", margin:"4px 2px 8px" }}><b style={{ fontSize:14 }}>{dayLabel(selDay)}</b><button onClick={() => setSelDay(null)} style={{ background:"none", border:"none", color:C.amber, cursor:"pointer", fontSize:12, fontWeight:700 }}>Show month</button></div>}
         {(selDay ? !days[selDay] : mDays.length === 0) && <div style={{ textAlign:"center", color:C.muted, padding:"30px 0", fontSize:13 }}>{selDay ? "No orders on this day." : `No orders in ${mName}.`}</div>}
