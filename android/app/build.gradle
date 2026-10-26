@@ -7,7 +7,8 @@ android {
         applicationId "com.proworkers.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        // The build server sets VERSION_CODE (it goes up with every build) so Android sees each APK as an update
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "1")
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -24,7 +25,22 @@ android {
         user  { dimension "role" }
         admin { dimension "role" }
     }
+    // One permanent signing key (kept in GitHub secrets) so every build can update the app already on a phone.
+    // Without those secrets the build still works and falls back to the temporary debug key.
+    signingConfigs {
+        proworkers {
+            if (System.getenv("KEYSTORE_FILE")) {
+                storeFile file(System.getenv("KEYSTORE_FILE"))
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (System.getenv("KEYSTORE_FILE")) { signingConfig signingConfigs.proworkers }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

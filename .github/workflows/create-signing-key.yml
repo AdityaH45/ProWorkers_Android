@@ -1,0 +1,31 @@
+name: Create signing key (run once)
+# Makes ONE permanent key for signing the app and saves it as GitHub secrets, so the key never appears
+# in the code or in any log. Needs a short-lived token stored as the secret SETUP_PAT (see the steps given in chat).
+on:
+  workflow_dispatch:
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate the key and save it as repository secrets
+        env:
+          GH_TOKEN: ${{ secrets.SETUP_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then echo "Add the secret SETUP_PAT first."; exit 1; fi
+          if gh secret list | grep -q '^KEYSTORE_B64'; then
+            echo "A signing key already exists. Not replacing it (that would stop updates working)."; exit 1
+          fi
+          PASS=$(openssl rand -hex 16)
+          echo "::add-mask::$PASS"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ks.p12" -storetype PKCS12 -alias proworkers \
+            -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=ProWorkers, OU=App, O=ProWorkers, L=Surat, ST=Gujarat, C=IN"
+          base64 -w0 "$RUNNER_TEMP/ks.p12" | gh secret set KEYSTORE_B64
+          printf '%s' "$PASS" | gh secret set KEYSTORE_PASSWORD
+          printf '%s' "proworkers" | gh secret set KEY_ALIAS
+          printf '%s' "$PASS" | gh secret set KEY_PASSWORD
+          rm -f "$RUNNER_TEMP/ks.p12"
+          echo "Done. The signing key is saved as secrets. You can now delete SETUP_PAT and the token."
