@@ -26,6 +26,30 @@ function useBackClose(active, fn) {
   }, [active]);
 }
 
+// A problem photo the customer added: small preview, tap to see it full screen
+function ProblemPhoto({ src, C }) {
+  const [big, setBig] = useState(false);
+  if (!src) return null;
+  return (
+    <>
+      <div style={{ marginTop:8 }}>
+        <div style={{ color:C?.muted || "#8B949E", fontSize:11, fontWeight:700, letterSpacing:0.5, marginBottom:4 }}>📷 PHOTO FROM CUSTOMER (tap to enlarge)</div>
+        <img src={src} alt="Problem photo" onClick={() => setBig(true)} style={{ width:"100%", maxHeight:200, objectFit:"cover", borderRadius:10, cursor:"pointer", display:"block" }}/>
+      </div>
+      {big && <PhotoFull src={src} onClose={() => setBig(false)}/>}
+    </>
+  );
+}
+function PhotoFull({ src, onClose }) {
+  useBackClose(true, onClose);
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:10000, background:"rgba(0,0,0,0.95)", display:"flex", alignItems:"center", justifyContent:"center", padding:12 }}>
+      <img src={src} alt="Problem photo" style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain" }}/>
+      <div style={{ position:"absolute", top:14, right:14, background:"#21262D", color:"#E6EDF3", borderRadius:10, padding:"8px 16px", fontWeight:700, fontSize:14 }}>Close</div>
+    </div>
+  );
+}
+
 // ── Privacy Policy, shown inside the app (same page as the website's /privacy.html) ──
 function PolicyModal({ onClose }) {
   useBackClose(true, onClose);
@@ -3796,6 +3820,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                 <div style={{ background:C.card2, borderRadius:10, padding:"10px 14px", marginBottom:12 }}>
                   <div style={{ color:C.text, fontWeight:700, fontSize:14 }}>{svcIcon} {req.jobName}</div>
                   <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>📍 {req.address}</div>
+                  <ProblemPhoto src={req.problemPhoto} C={C}/>
                   {req.scheduledFor && <div style={{ color:C.amber, fontSize:12, fontWeight:800, marginTop:4 }}>📅 For {new Date(req.scheduledFor).toLocaleString("en-IN", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}</div>}
                   <div style={{ display:"flex", gap:10, marginTop:8 }}>
                     <span style={{ background:C.card, color:C.blue, fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:10 }}>📏 {req.distance}</span>
@@ -3845,6 +3870,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                   </div>
                   <div style={{ color:svcColor, fontWeight:900, fontSize:20 }}>₹{req.amount}</div>
                 </div>
+                <ProblemPhoto src={req.problemPhoto} C={C}/>
                 <div style={{ background:C.card2, borderRadius:10, padding:"10px 14px", marginBottom:14 }}>
                   <div style={{ color:C.muted, fontSize:12 }}>📍 {req.address}</div>
                   {req.scheduledFor && <div style={{ color:C.amber, fontSize:12, fontWeight:800, marginTop:4 }}>📅 For {new Date(req.scheduledFor).toLocaleString("en-IN", { weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}</div>}
