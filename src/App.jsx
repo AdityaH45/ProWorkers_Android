@@ -3890,9 +3890,13 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
                   <ArriveButton req={req} C={C} onTap={() => progressJob(req, { arrived:true }, "📍 Customer told you've arrived.")}/>
                 )}
                 {req.arrivedAt && <div style={{ color:C.green, fontSize:12, fontWeight:700, textAlign:"center", marginBottom:10 }}>✓ Arrived · customer notified</div>}
-                <button onClick={() => completeJob(req)} style={{ width:"100%", padding:"14px 0", background:C.amber, color:"#0D1117", border:"none", borderRadius:12, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
+{req.arrivedAt ? (
+                                <button onClick={() => completeJob(req)} style={{ width:"100%", padding:"14px 0", background:C.amber, color:"#0D1117", border:"none", borderRadius:12, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>
                   🎉 {t("mark_complete")}
                 </button>
+                ) : (
+                  <div style={{ color:C.muted, fontSize:12, textAlign:"center", padding:"10px 8px", background:C.card2, borderRadius:10, lineHeight:1.6 }}>📍 Reach the customer and tap "I've arrived" (within 200 m). Then you can mark the job complete.</div>
+                )}
               </div>
             ))}
           </div>
