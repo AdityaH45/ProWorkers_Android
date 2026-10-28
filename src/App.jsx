@@ -3831,6 +3831,8 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
         </div>
       </div>
 
+      {showRates && <RatesModal user={user} C={C} onClose={() => setShowRates(false)} onSkip={skipRates} onSaved={() => { setRatesDone(true); setShowRates(false); setToast({ msg:"✅ " + t("rates_saved"), color:C.green }); }}/>}
+
       {/* Content */}
       <div style={{ minHeight:"calc(100vh - 120px)" }}>
 
@@ -3849,7 +3851,6 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
               {pendingCount>0 && <span style={{ background:C.red, color:"#fff", fontWeight:800, fontSize:12, padding:"4px 12px", borderRadius:20 }}>{pendingCount} new</span>}
             </div>
 
-            {showRates && <RatesModal user={user} C={C} onClose={() => setShowRates(false)} onSkip={skipRates} onSaved={() => { setRatesDone(true); setShowRates(false); setToast({ msg:"✅ " + t("rates_saved"), color:C.green }); }}/>}
 
             {isOnline && locConsent === "" && (
               <div style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
