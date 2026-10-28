@@ -4764,8 +4764,8 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
   const todayIST = istDayOf(new Date());
   const activeDay = dayFilter || todayIST;   // the calendar day shown in Bookings / Payments / Payouts
 
-  async function load() {
-    setLoading(true);
+  async function load(quiet) {
+    if (quiet !== true) setLoading(true);
     setLoadError(null);
     try {
       const [s, w, b, c, cu, wd] = await Promise.all([
@@ -4935,7 +4935,7 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
           <span style={{ background:C.amber+"22", color:C.amber, fontSize:10, fontWeight:800, padding:"2px 8px", borderRadius:20 }}>ADMIN</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <button onClick={load} style={{ background:"none", border:`1px solid ${C.border}`, color:C.muted, borderRadius:8, padding:"5px 10px", cursor:"pointer", fontSize:12 }}>🔄 Refresh</button>
+          <button onClick={async () => { await load(true); if (tab === "rates") loadRates(); setToast({ msg:"✅ Refreshed", color:C.green }); }} style={{ background:"none", border:`1px solid ${C.border}`, color:C.muted, borderRadius:8, padding:"5px 10px", cursor:"pointer", fontSize:12 }}>🔄 Refresh</button>
           <button onClick={onLogout} style={{ background:C.red+"22", border:"none", color:C.red, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontSize:12, fontWeight:700 }}>Logout</button>
         </div>
       </div>
