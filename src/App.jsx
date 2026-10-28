@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { LanguageProvider, useLang, LANGUAGES } from "./i18n.jsx";
 import { QRCodeSVG } from "qrcode.react";
 import L from "leaflet";
@@ -2779,7 +2779,8 @@ function ProfileScreen({ user, onLogout, onUpdateUser, C }) {
 
 
 // ── Home Screen ───────────────────────────────────────────────────────────────
-function HomeScreen({ user, bookings, setTab, onOpenOrder, C }) {
+function HomeScreen({ user, bookings, setTab, onOpenOrder, C, closed }) {
+  const { t } = useLang();
   const isW = user.role==="worker";
   const [counts, setCounts] = useState({ electrician:0, plumber:0, labour:0 });
   useEffect(() => {
@@ -2826,7 +2827,14 @@ function HomeScreen({ user, bookings, setTab, onOpenOrder, C }) {
         ))}
       </div>
 
-      {!isW && (
+      {!isW && closed && (
+        <div style={{ background:`${C.amber}14`, border:`1.5px solid ${C.amber}55`, borderRadius:20, padding:20, marginBottom:20, textAlign:"center" }}>
+          <div style={{ fontSize:34 }}>🚧</div>
+          <div style={{ color:C.amber, fontWeight:900, fontSize:17, marginTop:6 }}>{t("soon_title")}</div>
+          <div style={{ color:C.muted, fontSize:13, marginTop:6 }}>{t("soon_text")}</div>
+        </div>
+      )}
+      {!isW && !closed && (
         <div onClick={() => setTab("book")} style={{ background:`linear-gradient(135deg,${C.amber}18,${C.card})`, border:`1.5px solid ${C.amber}44`, borderRadius:20, padding:20, marginBottom:20, cursor:"pointer" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div><div style={{ color:C.amber, fontWeight:900, fontSize:18 }}>Book a Worker</div><div style={{ color:C.muted, fontSize:13, marginTop:4 }}>Electrician · Plumber · Labour</div></div>
@@ -3024,7 +3032,84 @@ function pushNotif(title, body, icon="🛠️") {
 }
 
 // ── Worker Profile Tab (extracted so it can use its own state for showReset) ──
-function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout }) {
+// Worker "Set your rates" survey: the worker tells us a fair price for each job of their field.
+function RatesModal({ user, C, onClose, onSaved, onSkip }) {
+  const { t } = useLang();
+  useBackClose(true, onClose);
+  const svc = SERVICES[user.workerType] || SERVICES.electrician;
+  const jobs = svc.jobs.filter(j => !/d0$/.test(j.id));
+  const [vals, setVals] = useState({});
+  const [info, setInfo] = useState({ min:20, max:10000 });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    apiGet("/worker/rates").then(d => {
+      const v = {}; Object.entries(d.prices || {}).forEach(([k, n]) => { v[k] = String(n); });
+      setVals(v); setInfo({ min:d.min || 20, max:d.max || 10000 });
+    }).catch(() => {});
+  }, []);
+  async function save() {
+    setErr("");
+    const prices = {};
+    for (const j of jobs) {
+      const raw = String(vals[j.id] ?? "").trim();
+      if (!raw) continue;
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < info.min || n > info.max) { setErr(`${j.name}: ${t("rates_err")} ₹${info.min} – ₹${info.max}`); return; }
+      prices[j.id] = n;
+    }
+    if (Object.keys(prices).length === 0) { setErr(t("rates_none")); return; }
+    setBusy(true);
+    try {
+      const res = await fetch(API_BASE + "/worker/rates", { method:"PUT", headers:{ "Content-Type":"application/json", ...authHeaders() }, body: JSON.stringify({ prices }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not save");
+      onSaved();
+    } catch (e) { setErr(e.message || "Could not save"); }
+    setBusy(false);
+  }
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:450, background:C.bg, color:C.text, overflowY:"auto", fontFamily:"'Inter',system-ui,sans-serif" }}>
+      <div style={{ maxWidth:480, margin:"0 auto", padding:"20px 16px 40px" }}>
+        <div style={{ fontSize:34, textAlign:"center" }}>{svc.icon}</div>
+        <h2 style={{ textAlign:"center", margin:"6px 0 12px", fontWeight:900, fontSize:22 }}>{t("rates_title")}</h2>
+        <div style={{ background:`${C.amber}14`, border:`1px solid ${C.amber}44`, borderRadius:12, padding:"12px 14px", fontSize:13, lineHeight:1.55, marginBottom:16 }}>
+          {t("rates_notice")}
+        </div>
+        {jobs.map(j => (
+          <div key={j.id} style={{ display:"flex", alignItems:"center", gap:10, background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"10px 12px", marginBottom:8 }}>
+            <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{j.name}{j.unit ? <span style={{ color:C.muted, fontWeight:500 }}> · {t("rates_per_hr")}</span> : null}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+              <span style={{ color:C.muted, fontWeight:700 }}>₹</span>
+              <input value={vals[j.id] ?? ""} inputMode="numeric" placeholder="—" onChange={e => setVals(v => ({ ...v, [j.id]: e.target.value.replace(/[^0-9]/g, "").slice(0, 5) }))}
+                style={{ width:78, padding:"8px 8px", background:C.card2, border:`1px solid ${C.border}`, borderRadius:8, color:C.text, fontWeight:800, fontSize:15, textAlign:"right" }}/>
+            </div>
+          </div>
+        ))}
+        {err && <div style={{ color:C.red, fontSize:13, fontWeight:700, margin:"8px 0" }}>⚠️ {err}</div>}
+        <button disabled={busy} onClick={save} style={{ width:"100%", marginTop:10, padding:"14px 0", background:C.amber, color:"#0D1117", border:"none", borderRadius:14, fontWeight:900, fontSize:15, cursor:"pointer", opacity:busy?0.6:1 }}>{busy ? "…" : t("rates_save")}</button>
+        <button onClick={onSkip} style={{ width:"100%", marginTop:10, padding:"12px 0", background:"transparent", color:C.muted, border:`1px solid ${C.border}`, borderRadius:14, fontWeight:700, fontSize:14, cursor:"pointer" }}>{t("rates_skip")}</button>
+        <div style={{ color:C.muted, fontSize:11, textAlign:"center", marginTop:10 }}>{t("rates_later")}</div>
+      </div>
+    </div>
+  );
+}
+
+function LaunchSoon({ C, onBack }) {
+  const { t } = useLang();
+  return (
+    <div style={{ padding:20, maxWidth:480, margin:"0 auto", textAlign:"center" }}>
+      <div style={{ background:C.card, border:`1.5px solid ${C.amber}44`, borderRadius:20, padding:"36px 20px", marginTop:30 }}>
+        <div style={{ fontSize:52 }}>🚧</div>
+        <div style={{ color:C.amber, fontWeight:900, fontSize:20, marginTop:10 }}>{t("soon_title")}</div>
+        <div style={{ color:C.muted, fontSize:14, marginTop:8, lineHeight:1.5 }}>{t("soon_text")}</div>
+        {onBack && <button onClick={onBack} style={{ marginTop:20, padding:"11px 22px", background:C.card2, color:C.text, border:`1px solid ${C.border}`, borderRadius:12, fontWeight:700, cursor:"pointer" }}>← {t("nav_home")}</button>}
+      </div>
+    </div>
+  );
+}
+
+function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout, onRates }) {
   const { t, lang, setLang } = useLang();
   const [showReset, setShowReset] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
@@ -3068,6 +3153,7 @@ function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout 
         </div>
       </div>
 
+      <button onClick={onRates} style={{ width:"100%", padding:"13px 0", background:`${C.amber}18`, color:C.amber, border:`1.5px solid ${C.amber}44`, borderRadius:14, fontWeight:700, fontSize:14, cursor:"pointer", marginBottom:10 }}>💰 {t("rates_my")}</button>
       <button onClick={onEditProfile} style={{ width:"100%", padding:"13px 0", background:`${svcColor}18`, color:svcColor, border:`1.5px solid ${svcColor}44`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("edit_profile")}</button>
       <button onClick={() => setShowReset(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.blue||"#388BFD", border:`1.5px solid ${C.blue||"#388BFD"}33`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("change_password")}</button>
       <SupportCard C={C}/>
@@ -3387,6 +3473,18 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
   const [user, setUser] = useState(initialUser);
   const [tab,        setTab]      = useState("requests");
   useBackClose(tab !== "requests", () => setTab("requests"));
+  // Price survey: opens once on first login if not answered; skipping is remembered but it can always be opened again.
+  const [showRates, setShowRates] = useState(false);
+  const [ratesDone, setRatesDone] = useState(true);
+  const skipKey = "pt_rates_skip_" + initialUser.id;
+  useEffect(() => {
+    apiGet("/worker/rates").then(d => {
+      setRatesDone(!!d.answered);
+      let skipped = false; try { skipped = !!localStorage.getItem(skipKey); } catch {}
+      if (!d.answered && !skipped) setShowRates(true);
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  function skipRates() { try { localStorage.setItem(skipKey, "1"); } catch {} setShowRates(false); }
   usePushOpen(d => setTab(d.type === "new_request" ? "requests" : d.type === "withdrawal" ? "earnings" : "active"));
   // Real bookings assigned to this worker — no more fake DEMO_REQUESTS.
   const [allJobs,    setAllJobs]  = useState([]);
@@ -3739,10 +3837,19 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
         {/* ── REQUESTS TAB ── */}
         {tab==="requests" && (
           <div style={{ padding:20, maxWidth:480, margin:"0 auto" }}>
+            {!ratesDone && (
+              <div onClick={() => setShowRates(true)} style={{ background:`${C.amber}14`, border:`1.5px solid ${C.amber}55`, borderRadius:14, padding:"12px 14px", marginBottom:14, cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ fontSize:24 }}>💰</div>
+                <div style={{ flex:1 }}><div style={{ color:C.amber, fontWeight:800, fontSize:14 }}>{t("rates_title")}</div><div style={{ color:C.muted, fontSize:12 }}>{t("rates_reminder")}</div></div>
+                <div style={{ color:C.amber, fontWeight:900 }}>›</div>
+              </div>
+            )}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <h2 style={{ color:C.text, margin:0, fontWeight:900, fontSize:22 }}>{t("incoming_requests")}</h2>
               {pendingCount>0 && <span style={{ background:C.red, color:"#fff", fontWeight:800, fontSize:12, padding:"4px 12px", borderRadius:20 }}>{pendingCount} new</span>}
             </div>
+
+            {showRates && <RatesModal user={user} C={C} onClose={() => setShowRates(false)} onSkip={skipRates} onSaved={() => { setRatesDone(true); setShowRates(false); setToast({ msg:"✅ " + t("rates_saved"), color:C.green }); }}/>}
 
             {isOnline && locConsent === "" && (
               <div style={{ position:"fixed", inset:0, zIndex:400, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
@@ -3984,7 +4091,7 @@ function WorkerApp({ user: initialUser, onLogout, onUpdateUser, C, toast, setToa
 
         {/* ── PROFILE TAB ── */}
         {tab==="profile" && (
-          <WorkerProfileTab
+          <WorkerProfileTab onRates={() => setShowRates(true)}
             user={user}
             svcColor={svcColor}
             svcIcon={svcIcon}
@@ -4604,6 +4711,35 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
   useBackClose(tab !== "overview", () => setTab("overview"));
   usePushOpen(d => setTab(({ payment:"payments", withdrawal:"withdrawals", complaint:"complaints" })[d.type] || "overview"));
   const [selWorker, setSelWorker] = useState(null);
+  const [rates, setRates] = useState(null);       // worker price survey results
+  const [ratesErr, setRatesErr] = useState("");
+  const [bkBusy, setBkBusy] = useState(false);
+  const loadRates = useCallback(() => {
+    setRatesErr("");
+    apiGet("/admin/rates").then(setRates).catch(e => setRatesErr(e.message || "Could not load"));
+  }, []);
+  useEffect(() => { if (tab === "rates") loadRates(); }, [tab, loadRates]);
+  async function setBookingsOpen(open) {
+    setBkBusy(true);
+    try {
+      const res = await fetch(API_BASE + "/admin/settings/bookings", { method:"PUT", headers:{ "Content-Type":"application/json", ...authHeaders() }, body: JSON.stringify({ open }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed");
+      setRates(r => r ? { ...r, bookingsOpen: !!d.bookingsOpen } : r);
+      setToast({ msg: open ? "✅ Bookings are OPEN for customers" : "🚧 Bookings are CLOSED (launching soon notice)", color: open ? C.green : C.amber });
+    } catch (e) { setToast({ msg:"⚠️ " + (e.message || "Failed"), color:C.red }); }
+    setBkBusy(false);
+  }
+  async function exportRates(fmt) {
+    if (!rates) return;
+    const head = ["Field","Job","Unit","Current price (Rs)","Answers","Min","Median","Average","Max"];
+    const body = rates.rows.map(r => [r.type, r.name, r.unit || "job", r.currentPrice, r.count, r.min ?? "", r.median ?? "", r.avg ?? "", r.max ?? ""]);
+    const base = "proworkers-worker-rates-" + new Date().toISOString().slice(0,10);
+    try {
+      if (fmt === "pdf") await exportPdf(base + ".pdf", "ProWorkers worker price survey", "Created " + new Date().toLocaleString("en-IN", { timeZone:"Asia/Kolkata" }), head, body);
+      else await exportCsv(base + ".csv", [head, ...body]);
+    } catch (e) { setToast({ msg:"⚠️ Could not export", color:C.red }); }
+  }
   const [revView, setRevView] = useState(null);   // "revenue" | "earnings"
   const [dayFilter, setDayFilter] = useState(""); // YYYY-MM-DD, "" = all days
   const [stats, setStats] = useState(null);
@@ -4755,6 +4891,7 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
     { id:"complaints", icon:"🚨", label:"Complaints" },
     { id:"payments",    icon:"💳", label:"Payments", badge: pendingPayments.length },
     { id:"withdrawals", icon:"💸", label:"Payouts",  badge: pendingWithdrawals.length },
+    { id:"rates",       icon:"💰", label:"Rates" },
   ];
 
   const statusColor = s => ({ pending_acceptance:C.amber, assigned:C.amber, on_way:C.blue, in_progress:C.blue, completed:C.green, cancelled:C.red, paid:C.green }[s] || C.muted);
@@ -5118,6 +5255,61 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
           })()}
 
           {/* ── WORKER WITHDRAWALS ───────────────────────── */}
+          {tab === "rates" && (
+            <div>
+              {ratesErr && <div style={{ color:C.red, marginBottom:10 }}>⚠️ {ratesErr}</div>}
+              {!rates && !ratesErr && <div style={{ color:C.muted }}>Loading…</div>}
+              {rates && (<>
+                <div style={{ background:C.card, border:`1.5px solid ${rates.bookingsOpen ? C.green : C.amber}55`, borderRadius:14, padding:16, marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                    <div>
+                      <div style={{ fontWeight:900, color:C.text, fontSize:15 }}>Customer bookings: {rates.bookingsOpen ? "OPEN" : "CLOSED"}</div>
+                      <div style={{ color:C.muted, fontSize:12, marginTop:3 }}>{rates.bookingsOpen ? "Customers can book workers." : "Customers can sign up but see “We're launching soon in Surat”."}</div>
+                    </div>
+                    <button disabled={bkBusy} onClick={() => setBookingsOpen(!rates.bookingsOpen)} style={{ padding:"10px 16px", background: rates.bookingsOpen ? `${C.amber}22` : C.green, color: rates.bookingsOpen ? C.amber : "#0D1117", border:`1.5px solid ${rates.bookingsOpen ? C.amber : C.green}`, borderRadius:10, fontWeight:800, cursor:"pointer", opacity:bkBusy?0.6:1 }}>
+                      {rates.bookingsOpen ? "Close bookings" : "Open bookings"}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+                  {Object.entries(rates.workers || {}).map(([k, v]) => (
+                    <div key={k} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 12px", fontSize:12, color:C.text }}>
+                      <b>{(SERVICES[k]?.icon || "")} {SERVICES[k]?.label || k}</b>: {v.answered} of {v.total} workers answered
+                    </div>
+                  ))}
+                  <button onClick={() => exportRates("csv")} style={{ marginLeft:"auto", padding:"8px 12px", background:C.card2, color:C.text, border:`1px solid ${C.border}`, borderRadius:10, fontWeight:700, cursor:"pointer", fontSize:12 }}>⬇ Excel</button>
+                  <button onClick={() => exportRates("pdf")} style={{ padding:"8px 12px", background:C.card2, color:C.text, border:`1px solid ${C.border}`, borderRadius:10, fontWeight:700, cursor:"pointer", fontSize:12 }}>⬇ PDF</button>
+                </div>
+                <div style={{ color:C.muted, fontSize:12, marginBottom:8 }}>Worker answers are private (only you see them). Prices in the app stay the same until you tell me the final prices.</div>
+                {["electrician","plumber","labour"].map(type => (
+                  <div key={type} style={{ marginBottom:16 }}>
+                    <div style={{ fontWeight:800, color:C.text, margin:"10px 0 6px" }}>{SERVICES[type]?.icon} {SERVICES[type]?.label}</div>
+                    <div style={{ overflowX:"auto", background:C.card, border:`1px solid ${C.border}`, borderRadius:12 }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, color:C.text }}>
+                        <thead><tr style={{ color:C.muted, textAlign:"left" }}>
+                          {["Job","Now ₹","Answers","Min","Median","Avg","Max"].map(h => <th key={h} style={{ padding:"8px 10px", fontWeight:700, whiteSpace:"nowrap" }}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {rates.rows.filter(r => r.type === type).map(r => (
+                            <tr key={r.id} style={{ borderTop:`1px solid ${C.border}` }}>
+                              <td style={{ padding:"7px 10px", minWidth:150 }}>{r.name}{r.unit ? " /" + r.unit : ""}</td>
+                              <td style={{ padding:"7px 10px", fontWeight:800 }}>{r.currentPrice}</td>
+                              <td style={{ padding:"7px 10px" }}>{r.count}</td>
+                              <td style={{ padding:"7px 10px" }}>{r.min ?? "–"}</td>
+                              <td style={{ padding:"7px 10px" }}>{r.median ?? "–"}</td>
+                              <td style={{ padding:"7px 10px" }}>{r.avg ?? "–"}</td>
+                              <td style={{ padding:"7px 10px" }}>{r.max ?? "–"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </>)}
+            </div>
+          )}
+
           {tab === "withdrawals" && (() => {
             const q = search.toLowerCase();
             const rows = withdrawals
@@ -5243,6 +5435,11 @@ function AppInner() {
   const [tab,       setTab]       = useState("home");
   useBackClose(!!user && tab !== "home", () => setTab("home"));
   const [rebook,    setRebook]    = useState(null);
+  const [bookingsOpen, setBookingsOpen] = useState(true);
+  useEffect(() => {
+    if (user?.role !== "customer") return;
+    apiGet("/settings").then(d => setBookingsOpen(d.bookingsOpen !== false)).catch(() => {});
+  }, [user?.id, tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [resume,    setResume]    = useState(null);   // an ongoing order the customer reopened
   usePushOpen(() => { if (user?.role === "customer") setTab("history"); });
   const [complaint, setComplaint] = useState(null);
@@ -5453,10 +5650,11 @@ function AppInner() {
   ];
 
   let content;
-  if      (tab==="book")    content = <BookingFlow key={resume?.id || rebook?.id || "new"} user={user} prefill={rebook} resume={resume} onBack={() => { setRebook(null); setResume(null); setTab("home"); }} onBooked={bk => { setRebook(null); setResume(null); addBooking(bk); setTab("history"); }} C={C}/>;
+  if      (tab==="book" && !bookingsOpen && !resume) content = <LaunchSoon C={C} onBack={() => setTab("home")}/>;
+  else if (tab==="book")    content = <BookingFlow key={resume?.id || rebook?.id || "new"} user={user} prefill={rebook} resume={resume} onBack={() => { setRebook(null); setResume(null); setTab("home"); }} onBooked={bk => { setRebook(null); setResume(null); addBooking(bk); setTab("history"); }} C={C}/>;
   else if (tab==="history") content = <HistoryScreen bookings={bookings} onRebook={b => { setRebook(b); setTab("book"); }} onComplaint={setComplaint} onRated={updated => setBookings(prev => prev.map(b => b.id === updated.id ? updated : b))} C={C}/>;
   else if (tab==="profile") content = <ProfileScreen user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} C={C}/>;
-  else                      content = <HomeScreen user={user} bookings={bookings} setTab={setTab} onOpenOrder={b => { setRebook(null); setResume(b); setTab("book"); }} C={C}/>;
+  else                      content = <HomeScreen closed={!bookingsOpen} user={user} bookings={bookings} setTab={setTab} onOpenOrder={b => { setRebook(null); setResume(b); setTab("book"); }} C={C}/>;
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Inter',system-ui,sans-serif", color:C.text, paddingBottom:72 }}>
