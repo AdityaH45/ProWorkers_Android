@@ -678,6 +678,23 @@ function FullMapScreen({ onConfirm, onClose, C }) {
 // Native helper (Android only): reads "money received" notifications for auto-verify
 const UpiWatcher = registerPlugin("UpiWatcher");
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");   // keeps location going with the screen off (Android app only)
+// If the server says this account is blocked or deleted, sign out at once and tell the person.
+if (typeof window !== "undefined" && !window.__ptFetchGuard) {
+  window.__ptFetchGuard = true;
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async (...a) => {
+    const r = await origFetch(...a);
+    if (r.status === 401) {
+      r.clone().json().then(j => {
+        if (j && j.blocked) {
+          try { localStorage.removeItem("pt_token"); localStorage.removeItem("pt_user"); } catch {}
+          alert(j.error || "This account is not active."); window.location.reload();
+        }
+      }).catch(() => {});
+    }
+    return r;
+  };
+}
 const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api";
 
 // The login token goes with every call; the server uses it to know who is asking.
@@ -2615,12 +2632,13 @@ function ProfileEditModal({ user, onSave, onClose, C }) {
               <label style={{ color:C.muted, fontSize:11, fontWeight:700, display:"block", marginBottom:8, letterSpacing:1 }}>SKILL / WORK TYPE</label>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
                 {Object.entries(SERVICES).map(([k, v]) => (
-                  <div key={k} onClick={() => setWtype(k)} style={{ padding:"12px 6px", borderRadius:12, textAlign:"center", cursor:"pointer", border:`2px solid ${wtype===k ? v.color : C.border}`, background: wtype===k ? `${v.color}15` : C.card2 }}>
+                  <div key={k} style={{ padding:"12px 6px", borderRadius:12, textAlign:"center", cursor:"default", opacity: wtype===k ? 1 : 0.35, border:`2px solid ${wtype===k ? v.color : C.border}`, background: wtype===k ? `${v.color}15` : C.card2 }}>
                     <div style={{ fontSize:22 }}>{v.icon}</div>
                     <div style={{ fontSize:10, fontWeight:700, color: wtype===k ? v.color : C.muted, marginTop:4 }}>{v.label}</div>
                   </div>
                 ))}
               </div>
+              <div style={{ color:C.muted, fontSize:11, marginTop:6 }}>{t("field_locked")}</div>
             </div>
           )}
 
@@ -2721,6 +2739,7 @@ function ProfileScreen({ user, onLogout, onUpdateUser, C }) {
   const sv = user.workerType ? SERVICES[user.workerType] : null;
   const ac = sv?.color || C.amber;
   const [showReset, setShowReset] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
   const [showEdit,  setShowEdit]  = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
 
@@ -2767,6 +2786,8 @@ function ProfileScreen({ user, onLogout, onUpdateUser, C }) {
       <button onClick={() => setShowReset(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.blue||"#388BFD", border:`1.5px solid ${C.blue||"#388BFD"}33`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("change_password")}</button>
       <SupportCard C={C}/>
       <button onClick={onLogout} style={{ width:"100%", padding:"14px 0", background:`${C.red}18`, color:C.red, border:`1.5px solid ${C.red}33`, borderRadius:14, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>{t("sign_out")}</button>
+      <button onClick={() => setShowDelete(true)} style={{ width:"100%", padding:"10px 0", marginTop:10, background:"transparent", color:C.muted, border:"none", fontWeight:600, fontSize:13, cursor:"pointer", textDecoration:"underline" }}>{t("del_button")}</button>
+      {showDelete && <DeleteAccountModal C={C} onClose={() => setShowDelete(false)} onDone={onLogout}/>}
       <div style={{ textAlign:"center", marginTop:18, marginBottom:8 }}>
         <span onClick={() => setShowPolicy(true)} style={{ color:C.muted, fontSize:13, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}>Privacy Policy</span>
       </div>
@@ -3032,6 +3053,39 @@ function pushNotif(title, body, icon="🛠️") {
 }
 
 // ── Worker Profile Tab (extracted so it can use its own state for showReset) ──
+// Delete my account: asks for the password; the server refuses while a job or money is still open.
+function DeleteAccountModal({ C, onClose, onDone }) {
+  const { t } = useLang();
+  useBackClose(true, onClose);
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setErr(""); setBusy(true);
+    try {
+      const res = await fetch(API_BASE + "/user/account", { method:"DELETE", headers:{ "Content-Type":"application/json", ...authHeaders() }, body: JSON.stringify({ password: pw }) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not delete");
+      onDone();
+    } catch (e) { setErr(e.message || "Could not delete"); }
+    setBusy(false);
+  }
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:470, background:"rgba(0,0,0,0.65)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:C.card, border:`1.5px solid ${C.red}55`, borderRadius:18, padding:22, maxWidth:380, width:"100%", color:C.text }}>
+        <div style={{ fontSize:34, textAlign:"center" }}>🗑️</div>
+        <div style={{ fontWeight:900, fontSize:18, textAlign:"center", margin:"6px 0 8px" }}>{t("del_title")}</div>
+        <div style={{ color:C.muted, fontSize:13, lineHeight:1.55, marginBottom:12 }}>{t("del_text")}</div>
+        <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder={t("del_password")} autoComplete="current-password"
+          style={{ width:"100%", boxSizing:"border-box", padding:"12px 12px", background:C.card2, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:15 }}/>
+        {err && <div style={{ color:C.red, fontSize:13, fontWeight:700, marginTop:8 }}>⚠️ {err}</div>}
+        <button disabled={busy || !pw} onClick={go} style={{ width:"100%", marginTop:12, padding:"13px 0", background:C.red, color:"#fff", border:"none", borderRadius:12, fontWeight:900, fontSize:15, cursor:"pointer", opacity:(busy||!pw)?0.5:1 }}>{busy ? "…" : t("del_confirm")}</button>
+        <button onClick={onClose} style={{ width:"100%", marginTop:8, padding:"11px 0", background:"transparent", color:C.muted, border:`1px solid ${C.border}`, borderRadius:12, fontWeight:700, cursor:"pointer" }}>{t("del_cancel")}</button>
+      </div>
+    </div>
+  );
+}
+
 // Worker "Set your rates" survey: the worker tells us a fair price for each job of their field.
 function RatesModal({ user, C, onClose, onSaved, onSkip }) {
   const { t } = useLang();
@@ -3113,6 +3167,7 @@ function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout,
   const { t, lang, setLang } = useLang();
   const [showReset, setShowReset] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
   return (
     <div style={{ padding:20, maxWidth:480, margin:"0 auto" }}>
       <h2 style={{ color:C.text, margin:"0 0 20px", fontWeight:900, fontSize:22 }}>{t("my_profile")}</h2>
@@ -3158,6 +3213,8 @@ function WorkerProfileTab({ user, svcColor, svcIcon, C, onEditProfile, onLogout,
       <button onClick={() => setShowReset(true)} style={{ width:"100%", padding:"13px 0", background:C.card2, color:C.blue||"#388BFD", border:`1.5px solid ${C.blue||"#388BFD"}33`, borderRadius:14, fontWeight:700, fontSize:15, cursor:"pointer", fontFamily:"inherit", marginBottom:10 }}>{t("change_password")}</button>
       <SupportCard C={C}/>
       <button onClick={onLogout} style={{ width:"100%", padding:"14px 0", background:`${C.red}18`, color:C.red, border:`1.5px solid ${C.red}33`, borderRadius:14, fontWeight:800, fontSize:15, cursor:"pointer", fontFamily:"inherit" }}>{t("sign_out")}</button>
+      <button onClick={() => setShowDelete(true)} style={{ width:"100%", padding:"10px 0", marginTop:10, background:"transparent", color:C.muted, border:"none", fontWeight:600, fontSize:13, cursor:"pointer", textDecoration:"underline" }}>{t("del_button")}</button>
+      {showDelete && <DeleteAccountModal C={C} onClose={() => setShowDelete(false)} onDone={onLogout}/>}
       <div style={{ textAlign:"center", marginTop:18, marginBottom:8 }}>
         <span onClick={() => setShowPolicy(true)} style={{ color:C.muted, fontSize:13, fontWeight:600, cursor:"pointer", textDecoration:"underline" }}>Privacy Policy</span>
       </div>
@@ -4267,6 +4324,27 @@ function WorkerDetail({ workerId, C, onClose }) {
     <div style={box}>
       <div style={{ fontWeight:900, fontSize:18 }}>{({ electrician:"⚡", plumber:"🔧", labour:"👷" }[w.workerType] || "🛠️")} {w.name}</div>
       <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{w.email} · {w.phone}</div>
+      {w.blocked && <div style={{ color:C.red, fontWeight:800, fontSize:12, marginTop:6 }}>⛔ BLOCKED — cannot log in or take jobs</div>}
+      {w.deletedAt && <div style={{ color:C.muted, fontWeight:800, fontSize:12, marginTop:6 }}>This person deleted their account</div>}
+      {!w.deletedAt && (
+        <div style={{ display:"flex", gap:8, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
+          <button onClick={async () => {
+            if (!window.confirm(w.blocked ? "Unblock this worker?" : "Block this worker? They will be logged out and cannot take jobs.")) return;
+            const r = await API(`/admin/users/worker/${workerId}/block`, { method:"PUT", body: JSON.stringify({ blocked: !w.blocked }) });
+            if (r.error) { alert(r.error); return; }
+            setReloadKey(k => k + 1);
+          }} style={{ background: w.blocked ? C.green : `${C.red}22`, color: w.blocked ? "#0D1117" : C.red, border:`1px solid ${w.blocked ? C.green : C.red}66`, borderRadius:8, padding:"7px 12px", fontWeight:800, fontSize:12, cursor:"pointer" }}>{w.blocked ? "Unblock" : "⛔ Block"}</button>
+          <select value={w.workerType} onChange={async e => {
+            const nt = e.target.value; if (nt === w.workerType) return;
+            if (!window.confirm(`Change this worker's field to ${nt}? Their saved price answers will be cleared.`)) return;
+            const r = await API(`/admin/workers/${workerId}/type`, { method:"PUT", body: JSON.stringify({ workerType: nt }) });
+            if (r.error) { alert(r.error); return; }
+            setReloadKey(k => k + 1);
+          }} style={{ background:C.card2, color:C.text, border:`1px solid ${C.border}`, borderRadius:8, padding:"7px 8px", fontSize:12 }}>
+            <option value="electrician">Electrician</option><option value="plumber">Plumber</option><option value="labour">Labour</option>
+          </select>
+        </div>
+      )}
       <div style={{ fontSize:12, marginTop:8, display:"flex", gap:14, flexWrap:"wrap" }}>
         <span style={{ color:C.amber, fontWeight:700 }}>{w.workerType}</span>
         <span>📍 {w.area || w.location || "—"}</span>
@@ -5161,8 +5239,16 @@ function AdminApp({ user, onLogout, C, toast, setToast }) {
               <div style={{ fontSize:12, color:C.muted, marginBottom:10 }}>Showing {filteredCustomers.length} of {customers.length} customers</div>
               {filteredCustomers.map(c => (
                 <div key={c._id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 14px", marginBottom:10 }}>
-                  <div style={{ fontWeight:800, fontSize:14 }}>👤 {c.name}</div>
+                  <div style={{ fontWeight:800, fontSize:14 }}>👤 {c.name} {c.blocked && <span style={{ color:C.red, fontSize:11 }}>⛔ BLOCKED</span>} {c.deletedAt && <span style={{ color:C.muted, fontSize:11 }}>(deleted account)</span>}</div>
                   <div style={{ fontSize:12, color:C.muted }}>{c.email} · {c.phone}</div>
+                  {!c.deletedAt && c.role !== "admin" && (
+                    <button onClick={async () => {
+                      if (!window.confirm(c.blocked ? "Unblock this customer?" : "Block this customer? They will be logged out and cannot book.")) return;
+                      const r = await API(`/admin/users/customer/${c._id}/block`, { method:"PUT", body: JSON.stringify({ blocked: !c.blocked }) });
+                      if (r.error) { alert(r.error); return; }
+                      setCustomers(list => list.map(x => x._id === c._id ? { ...x, blocked: !c.blocked } : x));
+                    }} style={{ marginTop:8, background: c.blocked ? C.green : `${C.red}22`, color: c.blocked ? "#0D1117" : C.red, border:`1px solid ${c.blocked ? C.green : C.red}66`, borderRadius:8, padding:"5px 10px", fontWeight:800, fontSize:11, cursor:"pointer" }}>{c.blocked ? "Unblock" : "⛔ Block"}</button>
+                  )}
                   <div style={{ display:"flex", gap:16, marginTop:8, paddingTop:8, borderTop:`1px solid ${C.border}` }}>
                     <div style={{ fontSize:12 }}><span style={{ color:C.muted }}>Area: </span>{c.area || c.location || "—"}</div>
                     <div style={{ fontSize:12 }}><span style={{ color:C.muted }}>Bookings: </span><b style={{ color:C.blue }}>{c.bookingCount||0}</b></div>
