@@ -13,7 +13,7 @@ jobs:
         with: { node-version: 20, cache: npm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - run: npm ci
+      - run: for i in 1 2 3 4; do npm ci && break; echo "npm failed, retrying ($i)"; sleep 15; done; test -d node_modules/react
       - name: Build web app
         env:
           # Set under: Repo -> Settings -> Secrets and variables -> Actions -> Variables
