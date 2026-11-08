@@ -31,19 +31,15 @@ jobs:
           else
             echo "No permanent key yet: signing with the temporary debug key."
           fi
-      - name: Build debug APKs (customer/worker app + admin app)
+      - name: Build debug APK
         working-directory: android
         env:
           VERSION_CODE: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: chmod +x gradlew && ./gradlew assembleUserDebug assembleAdminDebug --no-daemon
+        run: chmod +x gradlew && ./gradlew assembleUserDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: ProWorkers-app-for-customers-and-workers
           path: android/app/build/outputs/apk/user/debug/app-user-debug.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ProWorkers-ADMIN-app-only-for-admin-phone
-          path: android/app/build/outputs/apk/admin/debug/app-admin-debug.apk
