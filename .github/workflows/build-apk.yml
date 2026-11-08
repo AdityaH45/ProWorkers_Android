@@ -38,7 +38,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: chmod +x gradlew && ./gradlew assembleUserDebug --no-daemon
+        run: |
+          chmod +x gradlew
+          for i in 1 2 3 4; do ./gradlew --version --no-daemon && break; echo "Gradle download failed, retrying ($i)"; sleep 15; done
+          ./gradlew assembleUserDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: ProWorkers-app-for-customers-and-workers
