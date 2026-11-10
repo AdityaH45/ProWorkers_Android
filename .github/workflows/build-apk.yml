@@ -36,7 +36,7 @@ jobs:
         with:
           path: ~/.gradle/wrapper
           key: gradle-wrapper-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
-      - name: Build debug APK
+      - name: Build debug APKs (customer/worker app + admin app)
         working-directory: android
         env:
           VERSION_CODE: ${{ github.run_number }}
@@ -46,8 +46,12 @@ jobs:
         run: |
           chmod +x gradlew
           for i in 1 2 3 4; do ./gradlew --version --no-daemon && break; echo "Gradle download failed, retrying ($i)"; sleep 15; done
-          ./gradlew assembleUserDebug --no-daemon
+          ./gradlew assembleUserDebug assembleAdminDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: ProWorkers-app-for-customers-and-workers
           path: android/app/build/outputs/apk/user/debug/app-user-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProWorkers-ADMIN-app-only-for-admin-phone
+          path: android/app/build/outputs/apk/admin/debug/app-admin-debug.apk

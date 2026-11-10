@@ -17,10 +17,13 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // Customer and worker app (the admin app lives in its own private repo).
+    // Two apps from one code base: "user" = customers and workers (no notification reader),
+    // "admin" = the admin's own phone (has the UPI notification reader). Same package, so they
+    // share the Firebase settings; install only one of them on a phone.
     flavorDimensions "role"
     productFlavors {
         user  { dimension "role" }
+        admin { dimension "role" }
     }
     // One permanent signing key (kept in GitHub secrets) so every build can update the app already on a phone.
     // Without those secrets the build still works and falls back to the temporary debug key.
